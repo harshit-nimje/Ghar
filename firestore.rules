@@ -1,0 +1,795 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Default-Deny Safety Net (MUST remain first)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Hardened Global Primitives
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Schema Validators (Anti-Update-Gap)
+    // -------------------------------------------------------------------------
+    function isValidUserHousehold(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.userName is string &&
+             data.userName.size() >= 1 &&
+             data.userName.size() <= 60 &&
+             data.onboardingCompleted is bool &&
+             data.monthlyIncomePaise is int &&
+             data.monthlyIncomePaise >= 0 &&
+             data.monthlyIncomePaise <= 100000000000 &&
+             data.fixedCommitmentsPaise is int &&
+             data.fixedCommitmentsPaise >= 0 &&
+             data.fixedCommitmentsPaise <= 100000000000 &&
+             data.savingsTargetPaise is int &&
+             data.savingsTargetPaise >= 0 &&
+             data.savingsTargetPaise <= 100000000000 &&
+             data.monthStartDay is int &&
+             data.monthStartDay >= 1 &&
+             data.monthStartDay <= 31 &&
+             data.guiltSensitivity is string &&
+             data.guiltSensitivity in ['LOW', 'MEDIUM', 'HIGH'] &&
+             data.habitType is string &&
+             data.habitType in [
+               'CHAI_SNACKS',
+               'FOOD_DELIVERY',
+               'RIDES_COMMUTE',
+               'IMPULSE_SHOPPING',
+               'SUBSCRIPTIONS',
+               'NIGHTS_OUT'
+             ] &&
+             data.habitLeaks is list &&
+             data.habitLeaks.size() <= 10 &&
+             (data.habitLeaks.size() == 0 || (data.habitLeaks[0] is string && data.habitLeaks[0].size() <= 40)) &&
+             data.painDial is string &&
+             data.painDial in ['SUBTLE', 'BALANCED', 'PUNCHY'] &&
+             data.ageBand is string &&
+             data.ageBand.size() >= 1 &&
+             data.ageBand.size() <= 20 &&
+             data.lifeStage is string &&
+             data.lifeStage.size() >= 1 &&
+             data.lifeStage.size() <= 50 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidTransaction(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.amountPaise is int &&
+             data.amountPaise > 0 &&
+             data.amountPaise <= 100000000000 &&
+             data.direction is string &&
+             data.direction in ['DEBIT', 'CREDIT'] &&
+             data.merchant is string &&
+             data.merchant.size() >= 1 &&
+             data.merchant.size() <= 120 &&
+             data.category is string &&
+             data.category in [
+               'CHAI_SNACKS',
+               'FOOD_DELIVERY',
+               'COMMUTE',
+               'SHOPPING',
+               'GROCERIES',
+               'BILLS_UTILITIES',
+               'ENTERTAINMENT',
+               'HEALTH_MEDICAL',
+               'TRANSFERS',
+               'ALLOWANCE_INCOME',
+               'OTHER'
+             ] &&
+             data.timestamp is int &&
+             data.timestamp > 0 &&
+             data.source is string &&
+             data.source in ['NOTIFICATION', 'SMS', 'MANUAL', 'SEED'] &&
+             (!('rawText' in data) || data.rawText == null || (data.rawText is string && data.rawText.size() <= 500)) &&
+             data.isRecurring is bool &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidSavingsGoal(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.name is string &&
+             data.name.size() >= 1 &&
+             data.name.size() <= 80 &&
+             data.targetAmountPaise is int &&
+             data.targetAmountPaise >= 0 &&
+             data.targetAmountPaise <= 100000000000 &&
+             data.currentAmountPaise is int &&
+             data.currentAmountPaise >= 0 &&
+             data.currentAmountPaise <= 100000000000 &&
+             (!('targetDateEpochMillis' in data) || data.targetDateEpochMillis == null || (data.targetDateEpochMillis is int && data.targetDateEpochMillis > 0)) &&
+             data.instrumentType is string &&
+             data.instrumentType in ['SIP', 'RD', 'PPF', 'NONE'] &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidMaaChatMessage(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.sender is string &&
+             data.sender in ['USER', 'MAA'] &&
+             data.text is string &&
+             data.text.size() >= 1 &&
+             data.text.size() <= 4000 &&
+             data.timestamp is int &&
+             data.timestamp > 0 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time;
+    }
+
+    function isValidPapaChatMessage(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.sender is string &&
+             data.sender in ['USER', 'PAPA'] &&
+             data.text is string &&
+             data.text.size() >= 1 &&
+             data.text.size() <= 4000 &&
+             data.timestamp is int &&
+             data.timestamp > 0 &&
+             (!('sourcesJson' in data) || (data.sourcesJson is string && data.sourcesJson.size() <= 4000)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time;
+    }
+
+    function isValidQuickChip(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.label is string &&
+             data.label.size() >= 1 &&
+             data.label.size() <= 24 &&
+             data.merchant is string &&
+             data.merchant.size() >= 1 &&
+             data.merchant.size() <= 120 &&
+             data.amountPaise is int &&
+             data.amountPaise > 0 &&
+             data.amountPaise <= 100000000000 &&
+             data.category is string &&
+             data.category in [
+               'CHAI_SNACKS',
+               'FOOD_DELIVERY',
+               'COMMUTE',
+               'SHOPPING',
+               'GROCERIES',
+               'BILLS_UTILITIES',
+               'ENTERTAINMENT',
+               'HEALTH_MEDICAL',
+               'TRANSFERS',
+               'ALLOWANCE_INCOME',
+               'OTHER'
+             ] &&
+             data.direction is string &&
+             data.direction in ['DEBIT', 'CREDIT'] &&
+             data.colorKey is string &&
+             data.colorKey in ['HONEY', 'TERRACOTTA', 'SKY', 'SAGE', 'PLUM'] &&
+             data.sortOrder is int &&
+             data.sortOrder >= 0 &&
+             data.sortOrder <= 200 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidChitthiNote(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.author is string &&
+             data.author in ['MAA', 'PAPA', 'BHAI'] &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 80 &&
+             data.body is string &&
+             data.body.size() >= 1 &&
+             data.body.size() <= 1000 &&
+             data.tag is string &&
+             data.tag.size() >= 1 &&
+             data.tag.size() <= 40 &&
+             data.savedAt is int &&
+             data.savedAt > 0 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidPakkaCommitment(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             isValidId(data.userId) &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 80 &&
+             data.amountPaise is int &&
+             data.amountPaise > 0 &&
+             data.amountPaise <= 100000000000 &&
+             data.type is string &&
+             data.type in ['BILL', 'PAYMENT', 'SUBSCRIPTION', 'RECEIVABLE'] &&
+             data.category is string &&
+             data.category in [
+               'CHAI_SNACKS',
+               'FOOD_DELIVERY',
+               'COMMUTE',
+               'SHOPPING',
+               'GROCERIES',
+               'BILLS_UTILITIES',
+               'ENTERTAINMENT',
+               'HEALTH_MEDICAL',
+               'TRANSFERS',
+               'ALLOWANCE_INCOME',
+               'OTHER'
+             ] &&
+             data.dueDayOfMonth is int &&
+             data.dueDayOfMonth >= 1 &&
+             data.dueDayOfMonth <= 31 &&
+             data.notes is string &&
+             data.notes.size() <= 240 &&
+             data.isActive is bool &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules: /users/{userId}
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll([
+                         'userId',
+                         'userName',
+                         'onboardingCompleted',
+                         'monthlyIncomePaise',
+                         'fixedCommitmentsPaise',
+                         'savingsTargetPaise',
+                         'monthStartDay',
+                         'guiltSensitivity',
+                         'habitType',
+                         'habitLeaks',
+                         'painDial',
+                         'ageBand',
+                         'lifeStage',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId',
+                         'userName',
+                         'onboardingCompleted',
+                         'monthlyIncomePaise',
+                         'fixedCommitmentsPaise',
+                         'savingsTargetPaise',
+                         'monthStartDay',
+                         'guiltSensitivity',
+                         'habitType',
+                         'habitLeaks',
+                         'painDial',
+                         'ageBand',
+                         'lifeStage',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       isValidUserHousehold(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidUserHousehold(incoming()) &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action 1: Update user greeting name
+                         incoming().diff(existing()).affectedKeys().hasOnly(['userName', 'updatedAt']) ||
+                         // Action 2: Update budget calibration or onboarding state
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'userName',
+                           'onboardingCompleted',
+                           'monthlyIncomePaise',
+                           'fixedCommitmentsPaise',
+                           'savingsTargetPaise',
+                           'monthStartDay',
+                           'guiltSensitivity',
+                           'habitType',
+                           'habitLeaks',
+                           'painDial',
+                           'ageBand',
+                           'lifeStage',
+                           'updatedAt'
+                         ])
+                       );
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/transactions/{transactionId}
+      // -----------------------------------------------------------------------
+      match /transactions/{transactionId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(transactionId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(transactionId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'amountPaise',
+                           'direction',
+                           'merchant',
+                           'category',
+                           'timestamp',
+                           'source',
+                           'isRecurring',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'amountPaise',
+                           'direction',
+                           'merchant',
+                           'category',
+                           'timestamp',
+                           'source',
+                           'rawText',
+                           'isRecurring',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         isValidTransaction(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidTransaction(incoming()) &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(transactionId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Action 1: Quick category recategorization
+                           incoming().diff(existing()).affectedKeys().hasOnly(['category', 'updatedAt']) ||
+                           // Action 2: Mend khata entry details
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'amountPaise',
+                             'direction',
+                             'merchant',
+                             'category',
+                             'timestamp',
+                             'rawText',
+                             'isRecurring',
+                             'updatedAt'
+                           ])
+                         );
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(transactionId) &&
+                         existing().userId == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/goals/{goalId}
+      // -----------------------------------------------------------------------
+      match /goals/{goalId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(goalId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(goalId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'name',
+                           'targetAmountPaise',
+                           'currentAmountPaise',
+                           'instrumentType',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'name',
+                           'targetAmountPaise',
+                           'currentAmountPaise',
+                           'targetDateEpochMillis',
+                           'instrumentType',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         isValidSavingsGoal(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidSavingsGoal(incoming()) &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(goalId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Action 1: Drop coin into Gullak
+                           incoming().diff(existing()).affectedKeys().hasOnly(['currentAmountPaise', 'updatedAt']) ||
+                           // Action 2: Edit dream goal in Study
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'name',
+                             'targetAmountPaise',
+                             'currentAmountPaise',
+                             'targetDateEpochMillis',
+                             'instrumentType',
+                             'updatedAt'
+                           ])
+                         );
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(goalId) &&
+                         existing().userId == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/maa_chats/{messageId}
+      // -----------------------------------------------------------------------
+      match /maa_chats/{messageId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(messageId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'sender',
+                           'text',
+                           'timestamp',
+                           'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'sender',
+                           'text',
+                           'timestamp',
+                           'createdAt'
+                         ]) &&
+                         isValidMaaChatMessage(incoming());
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         existing().userId == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/papa_chats/{messageId}
+      // -----------------------------------------------------------------------
+      match /papa_chats/{messageId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(messageId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'sender',
+                           'text',
+                           'timestamp',
+                           'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'sender',
+                           'text',
+                           'timestamp',
+                           'sourcesJson',
+                           'createdAt'
+                         ]) &&
+                         isValidPapaChatMessage(incoming());
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(messageId) &&
+                         existing().userId == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/quick_chips/{chipId}
+      // -----------------------------------------------------------------------
+      match /quick_chips/{chipId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(chipId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(chipId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'label',
+                           'merchant',
+                           'amountPaise',
+                           'category',
+                           'direction',
+                           'colorKey',
+                           'sortOrder',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'label',
+                           'merchant',
+                           'amountPaise',
+                           'category',
+                           'direction',
+                           'colorKey',
+                           'sortOrder',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         isValidQuickChip(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidQuickChip(incoming()) &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(chipId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Action 1: Reorder quick chip
+                           incoming().diff(existing()).affectedKeys().hasOnly(['sortOrder', 'updatedAt']) ||
+                           // Action 2: Customise quick chip details
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'label',
+                             'merchant',
+                             'amountPaise',
+                             'category',
+                             'direction',
+                             'colorKey',
+                             'sortOrder',
+                             'updatedAt'
+                           ])
+                         );
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(chipId) &&
+                         existing().userId == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/chitthis/{chitthiId}
+      // -----------------------------------------------------------------------
+      match /chitthis/{chitthiId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(chitthiId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(chitthiId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'author',
+                           'title',
+                           'body',
+                           'tag',
+                           'savedAt',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'author',
+                           'title',
+                           'body',
+                           'tag',
+                           'savedAt',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         isValidChitthiNote(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidChitthiNote(incoming()) &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(chitthiId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title',
+                           'body',
+                           'tag',
+                           'savedAt',
+                           'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(chitthiId) &&
+                         existing().userId == request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Subcollection: /users/{userId}/pakke_commitments/{commitmentId}
+      // -----------------------------------------------------------------------
+      match /pakke_commitments/{commitmentId} {
+        allow get: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      isValidId(userId) &&
+                      isValidId(commitmentId) &&
+                      (resource == null || existing().userId == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       existing().userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(commitmentId) &&
+                         incoming().userId == userId &&
+                         incoming().keys().hasAll([
+                           'userId',
+                           'title',
+                           'amountPaise',
+                           'type',
+                           'category',
+                           'dueDayOfMonth',
+                           'notes',
+                           'isActive',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId',
+                           'title',
+                           'amountPaise',
+                           'type',
+                           'category',
+                           'dueDayOfMonth',
+                           'notes',
+                           'isActive',
+                           'createdAt',
+                           'updatedAt'
+                         ]) &&
+                         isValidPakkaCommitment(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidPakkaCommitment(incoming()) &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(commitmentId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           // Action 1: Pause or resume monthly commitment
+                           incoming().diff(existing()).affectedKeys().hasOnly(['isActive', 'updatedAt']) ||
+                           // Action 2: Edit monthly bill, payment, subscription, or receivable details
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'title',
+                             'amountPaise',
+                             'type',
+                             'category',
+                             'dueDayOfMonth',
+                             'notes',
+                             'isActive',
+                             'updatedAt'
+                           ])
+                         );
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(userId) &&
+                         isValidId(commitmentId) &&
+                         existing().userId == request.auth.uid;
+      }
+    }
+  }
+}

@@ -1,0 +1,537 @@
+{
+  "entities": {
+    "UserHousehold": {
+      "title": "UserHousehold",
+      "description": "Authenticated user's household profile, onboarding name, and budget calibration.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the household owner."
+        },
+        "userName": {
+          "type": "string",
+          "description": "Preferred first name used by Maa and home greeting (1-60 chars)."
+        },
+        "onboardingCompleted": {
+          "type": "boolean",
+          "description": "Whether the user has finished Ghar onboarding calibration."
+        },
+        "monthlyIncomePaise": {
+          "type": "integer",
+          "description": "Monthly income in paise."
+        },
+        "fixedCommitmentsPaise": {
+          "type": "integer",
+          "description": "Fixed monthly commitments (rent, bills, EMIs) in paise."
+        },
+        "savingsTargetPaise": {
+          "type": "integer",
+          "description": "Monthly savings target in paise."
+        },
+        "monthStartDay": {
+          "type": "integer",
+          "description": "Day of month when salary/allowance cycle resets (1-31)."
+        },
+        "guiltSensitivity": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH"],
+          "description": "Maa's voice calibration."
+        },
+        "habitType": {
+          "type": "string",
+          "enum": ["CHAI_SNACKS", "FOOD_DELIVERY", "RIDES_COMMUTE", "IMPULSE_SHOPPING", "SUBSCRIPTIONS", "NIGHTS_OUT"],
+          "description": "Primary spending leak habit."
+        },
+        "habitLeaks": {
+          "type": "array",
+          "description": "Bounded list (max 10) of calibrated spending leak habit names."
+        },
+        "painDial": {
+          "type": "string",
+          "enum": ["SUBTLE", "BALANCED", "PUNCHY"],
+          "description": "Physical paper rupee rustle intensity."
+        },
+        "ageBand": {
+          "type": "string",
+          "description": "Age bracket label (e.g. 25-34)."
+        },
+        "lifeStage": {
+          "type": "string",
+          "description": "Life stage label (Salaried, Student, Freelancer / Self-Employed, Homemaker / Other)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "userName",
+        "onboardingCompleted",
+        "monthlyIncomePaise",
+        "fixedCommitmentsPaise",
+        "savingsTargetPaise",
+        "monthStartDay",
+        "guiltSensitivity",
+        "habitType",
+        "habitLeaks",
+        "painDial",
+        "ageBand",
+        "lifeStage",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Household khata transaction entry (debit or credit) owned by a user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "amountPaise": {
+          "type": "integer",
+          "description": "Transaction amount in paise (> 0)."
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["DEBIT", "CREDIT"],
+          "description": "Whether money left (DEBIT) or entered (CREDIT) the batua."
+        },
+        "merchant": {
+          "type": "string",
+          "description": "Merchant or description label (1-120 chars)."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "CHAI_SNACKS",
+            "FOOD_DELIVERY",
+            "COMMUTE",
+            "SHOPPING",
+            "GROCERIES",
+            "BILLS_UTILITIES",
+            "ENTERTAINMENT",
+            "HEALTH_MEDICAL",
+            "TRANSFERS",
+            "ALLOWANCE_INCOME",
+            "OTHER"
+          ],
+          "description": "Household spending/income category."
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Epoch milliseconds when the transaction occurred."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["NOTIFICATION", "SMS", "MANUAL", "SEED"],
+          "description": "Capture source of the entry."
+        },
+        "rawText": {
+          "type": "string",
+          "description": "Optional raw notification/SMS snippet (max 500 chars)."
+        },
+        "isRecurring": {
+          "type": "boolean",
+          "description": "Whether this transaction repeats monthly."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "amountPaise",
+        "direction",
+        "merchant",
+        "category",
+        "timestamp",
+        "source",
+        "isRecurring",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SavingsGoal": {
+      "title": "SavingsGoal",
+      "description": "Papa's clay Gullak savings goal owned by a user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "name": {
+          "type": "string",
+          "description": "Dream/goal title (1-80 chars)."
+        },
+        "targetAmountPaise": {
+          "type": "integer",
+          "description": "Target savings amount in paise."
+        },
+        "currentAmountPaise": {
+          "type": "integer",
+          "description": "Current accumulated Gullak balance in paise."
+        },
+        "targetDateEpochMillis": {
+          "type": "integer",
+          "description": "Optional target date in epoch milliseconds."
+        },
+        "instrumentType": {
+          "type": "string",
+          "enum": ["SIP", "RD", "PPF", "NONE"],
+          "description": "Compounding instrument type."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "targetAmountPaise",
+        "currentAmountPaise",
+        "instrumentType",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MaaChatMessage": {
+      "title": "MaaChatMessage",
+      "description": "Immutable kitchen chat turn between the user and Maa.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "sender": {
+          "type": "string",
+          "enum": ["USER", "MAA"],
+          "description": "Author of the message in the Rasoi chat."
+        },
+        "text": {
+          "type": "string",
+          "description": "Message body (1-4000 chars)."
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Display ordering epoch milliseconds."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "sender",
+        "text",
+        "timestamp",
+        "createdAt"
+      ]
+    },
+    "PapaChatMessage": {
+      "title": "PapaChatMessage",
+      "description": "Immutable study-room chat turn between the user and Papa regarding savings, investments, and grounded financial insights.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "sender": {
+          "type": "string",
+          "enum": ["USER", "PAPA"],
+          "description": "Author of the message in Papa's study chat."
+        },
+        "text": {
+          "type": "string",
+          "description": "Message body (1-4000 chars)."
+        },
+        "timestamp": {
+          "type": "integer",
+          "description": "Display ordering epoch milliseconds."
+        },
+        "sourcesJson": {
+          "type": "string",
+          "description": "Optional serialized JSON array of Google Search grounding web citations (0-4000 chars)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "sender",
+        "text",
+        "timestamp",
+        "createdAt"
+      ]
+    },
+    "QuickChip": {
+      "title": "QuickChip",
+      "description": "User-customized one-tap household expense or income stamp chip.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "label": {
+          "type": "string",
+          "description": "Short stamp label shown on the chip (1-24 chars)."
+        },
+        "merchant": {
+          "type": "string",
+          "description": "Khata note or merchant description recorded when tapped (1-120 chars)."
+        },
+        "amountPaise": {
+          "type": "integer",
+          "description": "Default chip amount in paise (> 0)."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "CHAI_SNACKS",
+            "FOOD_DELIVERY",
+            "COMMUTE",
+            "SHOPPING",
+            "GROCERIES",
+            "BILLS_UTILITIES",
+            "ENTERTAINMENT",
+            "HEALTH_MEDICAL",
+            "TRANSFERS",
+            "ALLOWANCE_INCOME",
+            "OTHER"
+          ],
+          "description": "Household category assigned when logging via this chip."
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["DEBIT", "CREDIT"],
+          "description": "Whether this stamp logs an expense (DEBIT) or income (CREDIT)."
+        },
+        "colorKey": {
+          "type": "string",
+          "enum": ["HONEY", "TERRACOTTA", "SKY", "SAGE", "PLUM"],
+          "description": "Pastel linen color wash of the quick stamp."
+        },
+        "sortOrder": {
+          "type": "integer",
+          "description": "Display ordering index (0-200)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "label",
+        "merchant",
+        "amountPaise",
+        "category",
+        "direction",
+        "colorKey",
+        "sortOrder",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ChitthiNote": {
+      "title": "ChitthiNote",
+      "description": "Handwritten note or motherly/fatherly wisdom stashed by the user into their Chitthi Dabba.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "author": {
+          "type": "string",
+          "enum": ["MAA", "PAPA", "BHAI"],
+          "description": "Whether the stashed note came from Maa or Papa (BHAI retained for legacy compatibility)."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short header on the sticky note (1-80 chars)."
+        },
+        "body": {
+          "type": "string",
+          "description": "Handwritten wisdom or advice text (1-1000 chars)."
+        },
+        "tag": {
+          "type": "string",
+          "description": "Category tag of the note (1-40 chars)."
+        },
+        "savedAt": {
+          "type": "integer",
+          "description": "Epoch milliseconds when the note was stashed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "author",
+        "title",
+        "body",
+        "tag",
+        "savedAt",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PakkaCommitment": {
+      "title": "PakkaCommitment",
+      "description": "Recurring monthly household commitment (bill, payment/EMI, subscription, or incoming receivable) owned by a user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Denormalized owner UID matching parent /users/{userId} and request.auth.uid."
+        },
+        "title": {
+          "type": "string",
+          "description": "Commitment title such as Electricity Bill, Netflix, Rent, or Freelance Retainer (1-80 chars)."
+        },
+        "amountPaise": {
+          "type": "integer",
+          "description": "Expected monthly commitment amount in paise (> 0)."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["BILL", "PAYMENT", "SUBSCRIPTION", "RECEIVABLE"],
+          "description": "Commitment classification: BILL, PAYMENT, SUBSCRIPTION (outflows) or RECEIVABLE (inflow)."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "CHAI_SNACKS",
+            "FOOD_DELIVERY",
+            "COMMUTE",
+            "SHOPPING",
+            "GROCERIES",
+            "BILLS_UTILITIES",
+            "ENTERTAINMENT",
+            "HEALTH_MEDICAL",
+            "TRANSFERS",
+            "ALLOWANCE_INCOME",
+            "OTHER"
+          ],
+          "description": "Ledger category used when settling this commitment."
+        },
+        "dueDayOfMonth": {
+          "type": "integer",
+          "description": "Day of the calendar month when due or expected (1-31)."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional memo or account reference (0-240 chars)."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether this monthly commitment is active in the current cycle."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp; clients MUST submit FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "title",
+        "amountPaise",
+        "type",
+        "category",
+        "dueDayOfMonth",
+        "notes",
+        "isActive",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserHousehold",
+      "description": "Root per-user household profile, onboarding name, and budget calibration."
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User's private household khata ledger entries."
+    },
+    "/users/{userId}/goals/{goalId}": {
+      "schema": "SavingsGoal",
+      "description": "User's private clay Gullak savings goals."
+    },
+    "/users/{userId}/maa_chats/{messageId}": {
+      "schema": "MaaChatMessage",
+      "description": "User's private conversation history with Maa."
+    },
+    "/users/{userId}/papa_chats/{messageId}": {
+      "schema": "PapaChatMessage",
+      "description": "User's private savings and investment conversation history with Papa."
+    },
+    "/users/{userId}/quick_chips/{chipId}": {
+      "schema": "QuickChip",
+      "description": "User's customizable quick expense and income Khata stamps."
+    },
+    "/users/{userId}/chitthis/{chitthiId}": {
+      "schema": "ChitthiNote",
+      "description": "User's stashed handwritten Chitthi notes from Maa and Papa."
+    },
+    "/users/{userId}/pakke_commitments/{commitmentId}": {
+      "schema": "PakkaCommitment",
+      "description": "User's recurring monthly bills, fixed payments, subscriptions, and receivables."
+    }
+  }
+}

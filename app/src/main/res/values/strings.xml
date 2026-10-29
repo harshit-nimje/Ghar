@@ -1,0 +1,41 @@
+<resources>
+    <string name="app_name">Ghar</string>
+
+    <!-- Quick Khata Stamps & Customizer -->
+    <string name="quick_stamps_title">Quick Khata Stamps</string>
+    <string name="quick_stamps_customize">Customise</string>
+    <string name="quick_stamps_add_new">Add Stamp</string>
+    <string name="quick_stamps_dialog_title">Customise Quick Stamps</string>
+    <string name="quick_stamps_dialog_subtitle">Tailor one-tap household stamps for your everyday expenses and income.</string>
+    <string name="quick_stamps_create_title">New Quick Stamp</string>
+    <string name="quick_stamps_edit_title">Edit Quick Stamp</string>
+    <string name="quick_stamps_label_hint">Stamp Name (e.g. Chai, Metro, Milk)</string>
+    <string name="quick_stamps_amount_hint">Default Rupees (₹)</string>
+    <string name="quick_stamps_merchant_hint">Khata Note (e.g. Morning Mother Dairy)</string>
+    <string name="quick_stamps_save">Save Stamp</string>
+    <string name="quick_stamps_reset_defaults">Reset Defaults</string>
+    <string name="quick_stamps_presets_label">Tap a quick stamp to pre-fill:</string>
+
+    <!-- Family AI Engine & Shared Installable 0.5B On-Device LLM -->
+    <string name="maa_engine_cloud_label">Cloud AI</string>
+    <string name="maa_engine_mini_label">Family Local 0.5B</string>
+    <string name="maa_mini_card_title">Family Local 0.5B • Shared Offline AI (492 MB)</string>
+    <string name="maa_mini_card_desc">One shared 492 MB 0.5B Q4_K_M on-device model powers both Maa (warm daily wallet, petty cash &amp; bills) and Papa (calm investments, compounding &amp; rate math) 100% offline — no second download needed.</string>
+    <string name="maa_mini_install_action">Set Up Shared 0.5B LLM (492 MB)</string>
+    <string name="maa_mini_use_action">Use Local 0.5B LLM</string>
+    <string name="maa_mini_remove_action">Remove Local File (492 MB)</string>
+    <string name="maa_mini_installed_badge">492 MB on device • Maa &amp; Papa Offline 0.5B active</string>
+    <string name="maa_cloud_fallback_subtitle">Gemini 3.8 Flash + 3.5 Lite auto-backup</string>
+
+    <!-- Household Calculator, Chitthi Dabba, Commitments & Room Welcome Guides -->
+    <string name="hisaab_calculator_title">Hisaab Calculator</string>
+    <string name="hisaab_calculator_subtitle">Quick household math — jot straight into Khata or Papa\'s Gullak</string>
+    <string name="chitthi_dabba_title">Your Chitthi Dabba</string>
+    <string name="chitthi_dabba_subtitle">Handwritten notes, quotes &amp; reminders kept safe from Maa and Papa</string>
+    <string name="pakke_commitments_title">Monthly Bills, Subscriptions &amp; Receivables</string>
+    <string name="pakke_commitments_subtitle">Track, edit, pause, or settle bills, EMIs, subscriptions, and expected incoming payments.</string>
+    <string name="confirm_dialog_cancel">Cancel</string>
+    <string name="room_guide_step_in">Step Inside</string>
+    <string name="undo_action_label">Undo</string>
+</resources>
+

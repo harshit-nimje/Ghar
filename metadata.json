@@ -1,0 +1,6 @@
+{
+  "name": "Ghar",
+  "description": "A native budgeting app that gives UPI money back its physical weight, with Maa watching spending with warmth and Bhai building a parallel savings wallet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
