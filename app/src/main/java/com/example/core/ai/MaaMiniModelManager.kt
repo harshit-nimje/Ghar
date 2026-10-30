@@ -19,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -50,6 +51,7 @@ class MaaMiniModelManager(
 ) {
   private val appContext = context.applicationContext
   private val installMutex = Mutex()
+  private val engineMutex = Mutex()
   private val cancelRequested = AtomicBoolean(false)
 
   private val modelsDir: File
@@ -73,8 +75,18 @@ class MaaMiniModelManager(
   val isInstalled: Boolean
     get() = _status.value is MiniModelStatus.Installed
 
+  private val initScope = kotlinx.coroutines.CoroutineScope(
+    kotlinx.coroutines.SupervisorJob() + Dispatchers.IO
+  )
+
   init {
-    refreshStatusFromDisk()
+    if (simulatePacing && android.os.Looper.getMainLooper()?.thread === Thread.currentThread()) {
+      initScope.launch {
+        refreshStatusFromDisk()
+      }
+    } else {
+      refreshStatusFromDisk()
+    }
   }
 
   fun refreshStatusFromDisk() {
@@ -245,19 +257,22 @@ class MaaMiniModelManager(
 
   suspend fun getOrLoadEngine(): MaaMiniInferenceEngine = withContext(Dispatchers.IO) {
     cachedEngine?.let { return@withContext it }
-    val file = modelFile
-    if (!file.exists() || file.length() != TARGET_MODEL_SIZE_BYTES) {
-      throw IllegalStateException("Local 0.5B LLM is not installed on this device.")
+    engineMutex.withLock {
+      cachedEngine?.let { return@withLock it }
+      val file = modelFile
+      if (!file.exists() || file.length() != TARGET_MODEL_SIZE_BYTES) {
+        throw IllegalStateException("Local 0.5B LLM is not installed on this device.")
+      }
+      val loaded = MaaMiniInferenceEngine.loadFromModelFile(file)
+      cachedEngine = loaded
+      loaded
     }
-    val loaded = MaaMiniInferenceEngine.loadFromModelFile(file)
-    cachedEngine = loaded
-    loaded
   }
 
   /**
-   * Returns a ready-to-infer [MaaMiniInferenceEngine] 100% offline in <3ms:
+   * Returns a ready-to-infer [MaaMiniInferenceEngine] 100% offline:
    * uses the persisted 492 MB disk container if unpacked, or synthesizes the active quantized
-   * neural routing weights directly in RAM so offline chats always work immediately.
+   * neural routing weights once on a background worker thread with single-flight locking.
    */
   suspend fun getOrCreateInstantOfflineEngine(): MaaMiniInferenceEngine = withContext(Dispatchers.Default) {
     cachedEngine?.let { return@withContext it }
@@ -266,9 +281,12 @@ class MaaMiniModelManager(
       if (fromDisk != null) return@withContext fromDisk
     }
     cachedInstantEngine?.let { return@withContext it }
-    val synthesized = MaaMiniInferenceEngine.loadFromPayloadBytes(synthesizeActiveNeuralPayload())
-    cachedInstantEngine = synthesized
-    synthesized
+    engineMutex.withLock {
+      cachedInstantEngine?.let { return@withLock it }
+      val synthesized = MaaMiniInferenceEngine.loadFromPayloadBytes(synthesizeActiveNeuralPayload())
+      cachedInstantEngine = synthesized
+      synthesized
+    }
   }
 
   suspend fun uninstallModel(): Boolean = installMutex.withLock {

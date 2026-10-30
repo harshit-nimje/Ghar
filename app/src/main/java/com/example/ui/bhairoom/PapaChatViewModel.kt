@@ -25,6 +25,7 @@ import com.google.firebase.ai.type.Tool
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "PapaChatViewModel"
@@ -183,8 +185,16 @@ class PapaChatViewModel(
     viewModelScope.launch {
       _referralToMaaPrompt.value = null
       val mode = engineMode.value
-      val isOffline = !miniModelManager.isNetworkAvailable()
-      val requiresLiveMarketData = FamilyDomainRouter.isLiveMarketDataQuery(cleanInput)
+      val (isOffline, requiresLiveMarketData, routeDecision) = withContext(Dispatchers.Default) {
+        val offline = !miniModelManager.isNetworkAvailable()
+        val liveMarket = FamilyDomainRouter.isLiveMarketDataQuery(cleanInput)
+        val decision = when {
+          MaaChatViewModel.isBlatantOffTopicAbuse(cleanInput) -> 1
+          FamilyDomainRouter.shouldPapaReferToMaa(cleanInput) -> 2
+          else -> 0
+        }
+        Triple(offline, liveMarket, decision)
+      }
       val useLocalDirectly = mode == MaaAiEngineMode.MINI_LOCAL || (isOffline && !requiresLiveMarketData)
 
       _uiState.value = PapaChatUiState.Loading(
@@ -207,7 +217,7 @@ class PapaChatViewModel(
       }
 
       // Layer 1 fast guardrail against blatant non-financial abuse
-      if (MaaChatViewModel.isBlatantOffTopicAbuse(cleanInput)) {
+      if (routeDecision == 1) {
         val boundary = buildFatherlyBoundaryReply(snapshot.userName, snapshot.plainEnglish)
         runCatching {
           chatRepository.appendMessage(ChatSender.PAPA, boundary)
@@ -217,12 +227,14 @@ class PapaChatViewModel(
       }
 
       // Layer 2 household role split: petty daily cash, snacks, dinner orders & tiny wallet math go to Maa / Mom
-      if (FamilyDomainRouter.shouldPapaReferToMaa(cleanInput)) {
-        val referralReply = FamilyDomainRouter.composePapaReferralToMaa(
-          userName = snapshot.userName,
-          query = cleanInput,
-          snapshot = snapshot
-        )
+      if (routeDecision == 2) {
+        val referralReply = withContext(Dispatchers.Default) {
+          FamilyDomainRouter.composePapaReferralToMaa(
+            userName = snapshot.userName,
+            query = cleanInput,
+            snapshot = snapshot
+          )
+        }
         runCatching {
           chatRepository.appendMessage(ChatSender.PAPA, referralReply)
         }
@@ -249,23 +261,24 @@ class PapaChatViewModel(
 
       // For live market queries, strip prior assistant turns that may contain stale/offline rates
       // so the model relies strictly on fresh Google Search grounding for today's figures.
-      val cleanPriorTurns = if (requiresLiveMarketData) {
-        emptyList()
-      } else {
-        priorHistory.map { msg ->
-          (if (msg.sender == ChatSender.USER) "user" else "model") to msg.text
+      val conversationContents = withContext(Dispatchers.Default) {
+        val cleanPriorTurns = if (requiresLiveMarketData) {
+          emptyList()
+        } else {
+          priorHistory.map { msg ->
+            (if (msg.sender == ChatSender.USER) "user" else "model") to msg.text
+          }
         }
+        val contextFramedPrompt = buildPapaContextFramedPrompt(
+          userQuestion = cleanInput,
+          snap = snapshot,
+          requiresLiveMarketData = requiresLiveMarketData
+        )
+        MaaChatViewModel.buildAlternatingConversationContents(
+          priorTurns = cleanPriorTurns,
+          finalUserPrompt = contextFramedPrompt
+        )
       }
-
-      val contextFramedPrompt = buildPapaContextFramedPrompt(
-        userQuestion = cleanInput,
-        snap = snapshot,
-        requiresLiveMarketData = requiresLiveMarketData
-      )
-      val conversationContents = MaaChatViewModel.buildAlternatingConversationContents(
-        priorTurns = cleanPriorTurns,
-        finalUserPrompt = contextFramedPrompt
-      )
 
       val (cloudResult, cloudFailure) = executeGroundedCloudGeneration(
         conversationContents = conversationContents,
@@ -396,29 +409,45 @@ class PapaChatViewModel(
   ): Pair<String, List<GroundingSourceChip>> {
     val accumulated = StringBuilder()
     val collectedByUri = LinkedHashMap<String, GroundingSourceChip>()
+    var lastEmitNs = 0L
 
     withTimeout(timeoutMs) {
       model.generateContentStream(contents).collect { chunk ->
         val piece = chunk.text.orEmpty()
+        var addedChip = false
         extractGroundingChips(chunk).forEach { chip ->
           if (chip.uri.isNotBlank() && collectedByUri.size < 3 && !collectedByUri.containsKey(chip.uri)) {
             collectedByUri[chip.uri] = chip
+            addedChip = true
           }
         }
-        if (piece.isNotEmpty() || collectedByUri.isNotEmpty()) {
+        if (piece.isNotEmpty() || addedChip) {
           if (piece.isNotEmpty()) {
             accumulated.append(piece)
           }
-          _uiState.value = PapaChatUiState.Streaming(
-            partialText = accumulated.toString(),
-            engineBadge = streamingBadge,
-            sources = collectedByUri.values.toList()
-          )
+          val nowNs = System.nanoTime()
+          if (addedChip || lastEmitNs == 0L || (nowNs - lastEmitNs) >= 32_000_000L) {
+            lastEmitNs = nowNs
+            _uiState.value = PapaChatUiState.Streaming(
+              partialText = accumulated.toString(),
+              engineBadge = streamingBadge,
+              sources = collectedByUri.values.toList()
+            )
+          }
         }
       }
     }
 
-    return accumulated.toString().trim() to collectedByUri.values.toList()
+    val finalText = accumulated.toString().trim()
+    val finalChips = collectedByUri.values.toList()
+    if (finalText.isNotEmpty()) {
+      _uiState.value = PapaChatUiState.Streaming(
+        partialText = finalText,
+        engineBadge = streamingBadge,
+        sources = finalChips
+      )
+    }
+    return finalText to finalChips
   }
 
   private fun extractGroundingChips(response: GenerateContentResponse): List<GroundingSourceChip> {

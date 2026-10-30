@@ -227,9 +227,10 @@ fun LivingRoomScreen(
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       item(key = "courtyard_banner", contentType = "banner") {
+        val monthYearLabel = remember { DateUtils.formatMonthYear() }
         IllustratedRoomBanner(
           artworkRes = R.drawable.img_living_courtyard_1792931331737,
-          roomBadge = if (plainEnglish) "Insights • ${DateUtils.formatMonthYear()}" else "Courtyard • ${DateUtils.formatMonthYear()}",
+          roomBadge = if (plainEnglish) "Insights • $monthYearLabel" else "Courtyard • $monthYearLabel",
           title = "Monthly Overview",
           keyHighlight = "${CurrencyFormatter.formatRupees(periodSpentPaise / 100L)} spent • ${safeToSpend.daysRemaining} days left in cycle",
           accentColor = PastelSky,
@@ -429,25 +430,26 @@ fun LivingRoomScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
               ) {
                 categoryTotals.forEach { (cat, amountPaise) ->
-                  val amountRupees = amountPaise / 100L
-                  val percent = (amountRupees.toFloat() / totalAllCategoriesRupees.toFloat()).coerceIn(0.08f, 1f)
-                  val isExpanded = expandedCategory == cat
-                  val matchingTransactions = remember(periodTransactions, cat) {
-                    periodTransactions.filter { it.category == cat }
-                      .sortedByDescending { it.timestamp }
-                  }
+                  androidx.compose.runtime.key(cat) {
+                    val amountRupees = amountPaise / 100L
+                    val percent = (amountRupees.toFloat() / totalAllCategoriesRupees.toFloat()).coerceIn(0.08f, 1f)
+                    val isExpanded = expandedCategory == cat
+                    val matchingTransactions = remember(periodTransactions, cat) {
+                      periodTransactions.filter { it.category == cat }
+                        .sortedByDescending { it.timestamp }
+                    }
 
-                  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    WatercolorCategoryPetal(
-                      category = cat,
-                      plainEnglish = plainEnglish,
-                      amountRupees = amountRupees,
-                      shareFraction = percent,
-                      isExpanded = isExpanded,
-                      onClick = {
-                        expandedCategory = if (isExpanded) null else cat
-                      }
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                      WatercolorCategoryPetal(
+                        category = cat,
+                        plainEnglish = plainEnglish,
+                        amountRupees = amountRupees,
+                        shareFraction = percent,
+                        isExpanded = isExpanded,
+                        onClick = {
+                          expandedCategory = if (isExpanded) null else cat
+                        }
+                      )
 
                     AnimatedVisibility(visible = isExpanded) {
                       Column(
@@ -457,61 +459,64 @@ fun LivingRoomScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                       ) {
                         matchingTransactions.forEach { tx ->
-                          val shownMerchant = tx.displayMerchant(plainEnglish)
-                          Surface(
-                            onClick = { editingTransaction = tx },
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
-                            modifier = Modifier
-                              .fillMaxWidth()
-                              .defaultMinSize(minHeight = 48.dp)
-                              .testTag("courtyard_tx_item_${tx.id}")
-                          ) {
-                            Row(
+                          androidx.compose.runtime.key(tx.id) {
+                            val shownMerchant = tx.displayMerchant(plainEnglish)
+                            Surface(
+                              onClick = { editingTransaction = tx },
+                              shape = RoundedCornerShape(14.dp),
+                              color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                               modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                              horizontalArrangement = Arrangement.SpaceBetween,
-                              verticalAlignment = Alignment.CenterVertically
+                                .defaultMinSize(minHeight = 48.dp)
+                                .testTag("courtyard_tx_item_${tx.id}")
                             ) {
-                              Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                  text = shownMerchant,
-                                  style = MaterialTheme.typography.bodyMedium,
-                                  fontWeight = FontWeight.SemiBold,
-                                  color = MaterialTheme.colorScheme.onSurface,
-                                  maxLines = 1,
-                                  overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                  text = DateUtils.formatRelativeDate(tx.timestamp),
-                                  style = MaterialTheme.typography.labelSmall,
-                                  color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                              }
-                              Spacer(modifier = Modifier.width(8.dp))
-                              Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                  text = if (tx.isExpense) {
-                                    CurrencyFormatter.formatRupees(tx.amountRupees)
-                                  } else {
-                                    "+${CurrencyFormatter.formatRupees(tx.amountRupees)}"
-                                  },
-                                  style = GharHandStyles.moneySmall,
-                                  color = if (tx.isExpense) MaterialTheme.colorScheme.onSurface else PastelSage
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                  imageVector = Icons.Default.Edit,
-                                  contentDescription = "Edit $shownMerchant",
-                                  tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                  modifier = Modifier.size(15.dp)
-                                )
+                              Row(
+                                modifier = Modifier
+                                  .fillMaxWidth()
+                                  .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                  Text(
+                                    text = shownMerchant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                  )
+                                  Text(
+                                    text = DateUtils.formatRelativeDate(tx.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                  )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                  Text(
+                                    text = if (tx.isExpense) {
+                                      CurrencyFormatter.formatRupees(tx.amountRupees)
+                                    } else {
+                                      "+${CurrencyFormatter.formatRupees(tx.amountRupees)}"
+                                    },
+                                    style = GharHandStyles.moneySmall,
+                                    color = if (tx.isExpense) MaterialTheme.colorScheme.onSurface else PastelSage
+                                  )
+                                  Spacer(modifier = Modifier.width(6.dp))
+                                  Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit $shownMerchant",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(15.dp)
+                                  )
+                                }
                               }
                             }
                           }
                         }
                       }
+                    }
                     }
                   }
                 }
@@ -987,7 +992,6 @@ private fun HandloomTapestryCard(
         modifier = Modifier
           .fillMaxWidth()
           .height(26.dp)
-          .clip(RoundedCornerShape(13.dp))
       ) {
         val gap = 5.dp.toPx()
         val usableW = size.width - gap * 2f

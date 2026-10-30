@@ -21,6 +21,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,14 +102,14 @@ fun FlyingCoinOverlay(
 
   BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
     val density = LocalDensity.current
-    val t = flightProgress.value
-    val arcPeak = -190f * (4f * t * (1f - t))
-    val currentX = (1f - t) * startOffset.x + t * targetOffset.x
-    val currentY = (1f - t) * startOffset.y + t * targetOffset.y + arcPeak
+    val isFlying by androidx.compose.runtime.remember {
+      androidx.compose.runtime.derivedStateOf { flightProgress.value < 0.98f }
+    }
+    val isBursting by androidx.compose.runtime.remember {
+      androidx.compose.runtime.derivedStateOf { burstAlpha.value > 0.01f }
+    }
 
-    val entryScale = if (t > 0.78f) (1f - (t - 0.78f) * 3.6f).coerceIn(0.18f, 1f) else 1f
-
-    if (t < 0.98f) {
+    if (isFlying) {
       if (isPaperBill) {
         val notePalette = if (amountRupees >= 500L) {
           RupeeDenominationPalette.NOTE_500
@@ -121,6 +123,11 @@ fun FlyingCoinOverlay(
           width = 176.dp,
           height = 84.dp,
           modifier = Modifier.graphicsLayer {
+            val t = flightProgress.value
+            val arcPeak = -190f * (4f * t * (1f - t))
+            val currentX = (1f - t) * startOffset.x + t * targetOffset.x
+            val currentY = (1f - t) * startOffset.y + t * targetOffset.y + arcPeak
+            val entryScale = if (t > 0.78f) (1f - (t - 0.78f) * 3.6f).coerceIn(0.18f, 1f) else 1f
             translationX = currentX - halfW
             translationY = currentY - halfH
             scaleX = coinScale.value * entryScale
@@ -136,6 +143,11 @@ fun FlyingCoinOverlay(
           modifier = Modifier
             .size(coinSizeDp)
             .graphicsLayer {
+              val t = flightProgress.value
+              val arcPeak = -190f * (4f * t * (1f - t))
+              val currentX = (1f - t) * startOffset.x + t * targetOffset.x
+              val currentY = (1f - t) * startOffset.y + t * targetOffset.y + arcPeak
+              val entryScale = if (t > 0.78f) (1f - (t - 0.78f) * 3.6f).coerceIn(0.18f, 1f) else 1f
               translationX = currentX - halfSizePx
               translationY = currentY - halfSizePx
               scaleX = coinScale.value * entryScale
@@ -203,10 +215,11 @@ fun FlyingCoinOverlay(
     }
 
     // Celebratory clink burst + floating handwritten ink tag above the Gullak slot
-    if (burstAlpha.value > 0.01f) {
-      val b = burstProgress.value
+    if (isBursting) {
       val numParticles = 10
       Canvas(modifier = Modifier.fillMaxSize()) {
+        val b = burstProgress.value
+        val a = burstAlpha.value
         for (i in 0 until numParticles) {
           val angle = (i.toFloat() / numParticles) * 2 * Math.PI.toFloat()
           val radius = 28f + b * 76f
@@ -215,7 +228,7 @@ fun FlyingCoinOverlay(
           val pSize = (1f - b) * 8f + 2.5f
 
           drawCircle(
-            color = GoldCoin.copy(alpha = burstAlpha.value),
+            color = GoldCoin.copy(alpha = a),
             radius = pSize,
             center = Offset(px, py)
           )
@@ -230,7 +243,7 @@ fun FlyingCoinOverlay(
         shadowElevation = 6.dp,
         modifier = Modifier.graphicsLayer {
           translationX = targetOffset.x - tagHalfW
-          translationY = targetOffset.y - 72f - (b * 42f)
+          translationY = targetOffset.y - 72f - (burstProgress.value * 42f)
           alpha = burstAlpha.value
         }
       ) {

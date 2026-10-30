@@ -576,7 +576,11 @@ private fun OnboardingBackgroundCompilerHost(
   var mountOffscreenGlyphPass by remember { mutableStateOf(false) }
 
   LaunchedEffect(Unit) {
-    GharResourcePrewarmer.startWarmup(context, rootContainer)
+    GharResourcePrewarmer.startWarmup(
+      context = context,
+      rootContainer = rootContainer,
+      isOnboardingCompleted = false
+    )
     // Wait until the first Welcome frame is drawn before warming offscreen Compose ParagraphIntrinsics
     withFrameNanos {}
     kotlinx.coroutines.delay(140L)

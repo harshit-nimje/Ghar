@@ -1,0 +1,203 @@
+name: Build & Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: "APK build variant (release uses R8 shrinking & release signing)"
+        required: true
+        default: "release"
+        type: choice
+        options:
+          - release
+          - debug
+      version_tag:
+        description: "Optional GitHub Release tag (e.g. v1.0.0). Leave empty to only download APK as workflow artifact."
+        required: false
+        default: ""
+        type: string
+      release_notes:
+        description: "Optional custom release notes when creating a GitHub Release"
+        required: false
+        default: ""
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as pre-release (only applies when version_tag is set)"
+        required: false
+        default: false
+        type: boolean
+      run_unit_tests:
+        description: "Run JVM & Robolectric unit tests before building APK"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Ghar (${{ inputs.build_variant }}) APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Accept Android SDK licenses for API 36.1
+        run: |
+          if [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          fi
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Prepare .env and optional Firebase config override
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ ! -f ".env" ]; then
+            cp .env.example .env
+          fi
+          if [ -n "${GOOGLE_SERVICES_JSON}" ]; then
+            printf '%s\n' "${GOOGLE_SERVICES_JSON}" > app/google-services.json
+            echo "Applied GOOGLE_SERVICES_JSON from GitHub Secrets."
+          fi
+
+      - name: Prepare debug keystore
+        run: |
+          if [ -f "debug.keystore.base64" ]; then
+            tr -d '\n\r ' < debug.keystore.base64 | base64 -d > debug.keystore
+          elif [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Prepare release signing keystore
+        if: ${{ inputs.build_variant == 'release' }}
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          KEYSTORE_FILE="${RUNNER_TEMP}/ghar-release-upload.jks"
+          if [ -n "${RELEASE_KEYSTORE_BASE64}" ] && [ -n "${SECRET_STORE_PASSWORD}" ] && [ -n "${SECRET_KEY_PASSWORD}" ]; then
+            printf '%s' "${RELEASE_KEYSTORE_BASE64}" | tr -d '\n\r ' | base64 -d > "${KEYSTORE_FILE}"
+            echo "KEYSTORE_PATH=${KEYSTORE_FILE}" >> "${GITHUB_ENV}"
+            echo "STORE_PASSWORD=${SECRET_STORE_PASSWORD}" >> "${GITHUB_ENV}"
+            echo "KEY_PASSWORD=${SECRET_KEY_PASSWORD}" >> "${GITHUB_ENV}"
+            echo "SIGNING_MODE=persistent_secret" >> "${GITHUB_ENV}"
+          else
+            EPHEMERAL_PASS="ghar-ephemeral-$(openssl rand -hex 12)"
+            keytool -genkeypair -v \
+              -keystore "${KEYSTORE_FILE}" \
+              -storetype PKCS12 \
+              -storepass "${EPHEMERAL_PASS}" \
+              -alias upload \
+              -keypass "${EPHEMERAL_PASS}" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Ghar Release,O=Ghar,C=IN"
+            echo "KEYSTORE_PATH=${KEYSTORE_FILE}" >> "${GITHUB_ENV}"
+            echo "STORE_PASSWORD=${EPHEMERAL_PASS}" >> "${GITHUB_ENV}"
+            echo "KEY_PASSWORD=${EPHEMERAL_PASS}" >> "${GITHUB_ENV}"
+            echo "SIGNING_MODE=ephemeral_fallback" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Run unit & Robolectric tests
+        if: ${{ inputs.run_unit_tests }}
+        run: gradle :app:testDebugUnitTest --no-daemon
+
+      - name: Assemble ${{ inputs.build_variant }} APK
+        run: |
+          if [ "${{ inputs.build_variant }}" = "release" ]; then
+            gradle :app:assembleRelease --no-daemon
+          else
+            gradle :app:assembleDebug --no-daemon
+          fi
+
+      - name: Collect APK & compute SHA-256 checksum
+        id: package
+        run: |
+          VARIANT="${{ inputs.build_variant }}"
+          RAW_APK=$(find "app/build/outputs/apk/${VARIANT}" -maxdepth 2 -name "*.apk" ! -name "*-unsigned.apk" | head -n 1)
+          if [ -z "${RAW_APK}" ]; then
+            RAW_APK=$(find "app/build/outputs/apk/${VARIANT}" -maxdepth 2 -name "*.apk" | head -n 1)
+          fi
+          if [ -z "${RAW_APK}" ] || [ ! -f "${RAW_APK}" ]; then
+            echo "Error: Built APK not found under app/build/outputs/apk/${VARIANT}"
+            exit 1
+          fi
+
+          TAG_LABEL="${{ inputs.version_tag }}"
+          if [ -z "${TAG_LABEL}" ]; then
+            TAG_LABEL="v1.0-$(git rev-parse --short HEAD)"
+          fi
+
+          mkdir -p dist
+          OUT_NAME="Ghar-${TAG_LABEL}-${VARIANT}.apk"
+          OUT_PATH="dist/${OUT_NAME}"
+          cp "${RAW_APK}" "${OUT_PATH}"
+          sha256sum "${OUT_PATH}" > "${OUT_PATH}.sha256"
+
+          APK_SIZE_MB=$(du -h "${OUT_PATH}" | cut -f1)
+          APK_SHA256=$(cut -d ' ' -f1 "${OUT_PATH}.sha256")
+
+          echo "apk_name=${OUT_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "apk_path=${OUT_PATH}" >> "${GITHUB_OUTPUT}"
+          echo "checksum_path=${OUT_PATH}.sha256" >> "${GITHUB_OUTPUT}"
+          echo "apk_size=${APK_SIZE_MB}" >> "${GITHUB_OUTPUT}"
+          echo "apk_sha256=${APK_SHA256}" >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "## Ghar APK Build Summary"
+            echo "- **Variant:** \`${VARIANT}\`"
+            echo "- **File:** \`${OUT_NAME}\` (${APK_SIZE_MB})"
+            echo "- **SHA-256:** \`${APK_SHA256}\`"
+            if [ "${SIGNING_MODE:-}" = "ephemeral_fallback" ]; then
+              echo ""
+              echo "> **Note (Ephemeral Signing Key Used):** \`RELEASE_KEYSTORE_BASE64\`, \`STORE_PASSWORD\`, and \`KEY_PASSWORD\` were not configured in GitHub Secrets, so a temporary \`upload\` key was generated so your APK is immediately installable."
+              echo "> Before publishing permanent updates or using Google Sign-In in release builds, add a persistent keystore (alias \`upload\`) to GitHub Secrets and register its SHA-1 / SHA-256 in Firebase Console."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload APK workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.apk_name }}
+          path: |
+            ${{ steps.package.outputs.apk_path }}
+            ${{ steps.package.outputs.checksum_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release (when version_tag is provided)
+        if: ${{ inputs.version_tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version_tag }}
+          name: "Ghar ${{ inputs.version_tag }}"
+          body: ${{ inputs.release_notes }}
+          generate_release_notes: ${{ inputs.release_notes == '' }}
+          prerelease: ${{ inputs.prerelease }}
+          files: |
+            ${{ steps.package.outputs.apk_path }}
+            ${{ steps.package.outputs.checksum_path }}

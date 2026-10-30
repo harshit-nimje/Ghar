@@ -105,76 +105,102 @@ fun HallwayAffordance(
       verticalAlignment = Alignment.CenterVertically
     ) {
       HouseRoom.entries.forEach { room ->
-        val isSelected = room == currentRoom
-        val itemInteraction = remember(room) { MutableInteractionSource() }
-
-        val bgColor by animateColorAsState(
-          targetValue = if (isSelected) primaryColor else Color.Transparent,
-          animationSpec = tween(durationMillis = 150),
-          label = "dockPillBg"
+        HallwayDockItem(
+          room = room,
+          isSelected = room == currentRoom,
+          plainEnglish = plainEnglish,
+          primaryColor = primaryColor,
+          onPrimaryColor = onPrimaryColor,
+          onRoomSelected = onRoomSelected
         )
+      }
+    }
+  }
+}
 
-        val popScale by animateFloatAsState(
-          targetValue = if (isSelected) 1.03f else 1.0f,
-          animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-          ),
-          label = "dockItemScale"
-        )
+@Composable
+private fun HallwayDockItem(
+  room: HouseRoom,
+  isSelected: Boolean,
+  plainEnglish: Boolean,
+  primaryColor: Color,
+  onPrimaryColor: Color,
+  onRoomSelected: (HouseRoom) -> Unit
+) {
+  val itemInteraction = remember(room) { MutableInteractionSource() }
 
-        val iconTint = if (isSelected) {
-          onPrimaryColor
-        } else {
-          MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.84f)
-        }
+  val bgColorState = animateColorAsState(
+    targetValue = if (isSelected) primaryColor else Color.Transparent,
+    animationSpec = tween(durationMillis = 150),
+    label = "dockPillBg"
+  )
 
-        Box(
-          modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .height(48.dp)
-            .graphicsLayer {
-              scaleX = popScale
-              scaleY = popScale
-            }
-            .clip(CircleShape)
-            .background(bgColor)
-            .clickable(
-              interactionSource = itemInteraction,
-              indication = null
-            ) { onRoomSelected(room) }
-            .padding(
-              horizontal = if (isSelected) 15.dp else 12.dp,
-              vertical = 10.dp
-            )
-            .testTag("hallway_room_${room.name.lowercase()}"),
-          contentAlignment = Alignment.Center
-        ) {
-          Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-          ) {
-            RoomVectorIcon(
-              room = room,
-              size = 22.dp,
-              tint = iconTint
-            )
+  val popScaleState = animateFloatAsState(
+    targetValue = if (isSelected) 1.03f else 1.0f,
+    animationSpec = spring(
+      dampingRatio = Spring.DampingRatioMediumBouncy,
+      stiffness = Spring.StiffnessMedium
+    ),
+    label = "dockItemScale"
+  )
 
-            if (isSelected) {
-              Spacer(modifier = Modifier.width(7.dp))
-              Text(
-                text = room.displayTitle(plainEnglish),
-                style = MaterialTheme.typography.labelLarge,
-                color = onPrimaryColor,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip
-              )
-            }
+  val iconTint = if (isSelected) {
+    onPrimaryColor
+  } else {
+    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.84f)
+  }
+
+  Box(
+    modifier = Modifier
+      .minimumInteractiveComponentSize()
+      .height(48.dp)
+      .graphicsLayer {
+        val s = popScaleState.value
+        scaleX = s
+        scaleY = s
+      }
+      .clip(CircleShape)
+      .drawWithCache {
+        onDrawBehind {
+          val bg = bgColorState.value
+          if (bg.alpha > 0f) {
+            drawRect(color = bg)
           }
         }
+      }
+      .clickable(
+        interactionSource = itemInteraction,
+        indication = null
+      ) { onRoomSelected(room) }
+      .padding(
+        horizontal = if (isSelected) 15.dp else 12.dp,
+        vertical = 10.dp
+      )
+      .testTag("hallway_room_${room.name.lowercase()}"),
+    contentAlignment = Alignment.Center
+  ) {
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.Center
+    ) {
+      RoomVectorIcon(
+        room = room,
+        size = 22.dp,
+        tint = iconTint
+      )
+
+      if (isSelected) {
+        Spacer(modifier = Modifier.width(7.dp))
+        Text(
+          text = room.displayTitle(plainEnglish),
+          style = MaterialTheme.typography.labelLarge,
+          color = onPrimaryColor,
+          fontWeight = FontWeight.Bold,
+          fontSize = 13.sp,
+          maxLines = 1,
+          softWrap = false,
+          overflow = TextOverflow.Clip
+        )
       }
     }
   }

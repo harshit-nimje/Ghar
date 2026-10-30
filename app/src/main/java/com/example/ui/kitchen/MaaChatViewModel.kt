@@ -29,6 +29,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 import androidx.compose.runtime.Immutable
@@ -225,8 +227,12 @@ class MaaChatViewModel(
         }
       }
 
-      // Layer 1 fast guardrail against blatant non-Ghar AI abuse
-      if (isBlatantOffTopicAbuse(cleanInput)) {
+      // Run regex guardrails & domain routing off the Main UI thread
+      val (isAbuse, referToPapa) = withContext(Dispatchers.Default) {
+        isBlatantOffTopicAbuse(cleanInput) to FamilyDomainRouter.shouldMaaReferToPapa(cleanInput)
+      }
+
+      if (isAbuse) {
         val gentleRefusal = buildMotherlyBoundaryReply(snapshot.userName, snapshot.plainEnglish)
         runCatching {
           chatRepository.appendMessage(ChatSender.MAA, gentleRefusal)
@@ -236,12 +242,14 @@ class MaaChatViewModel(
       }
 
       // Layer 2 household role split: investments, interest rates & big-amount allocation go to Papa / Dad
-      if (FamilyDomainRouter.shouldMaaReferToPapa(cleanInput)) {
-        val referralReply = FamilyDomainRouter.composeMaaReferralToPapa(
-          userName = snapshot.userName,
-          query = cleanInput,
-          snapshot = snapshot
-        )
+      if (referToPapa) {
+        val referralReply = withContext(Dispatchers.Default) {
+          FamilyDomainRouter.composeMaaReferralToPapa(
+            userName = snapshot.userName,
+            query = cleanInput,
+            snapshot = snapshot
+          )
+        }
         runCatching {
           chatRepository.appendMessage(ChatSender.MAA, referralReply)
         }
@@ -268,13 +276,15 @@ class MaaChatViewModel(
       }
 
       // Cloud Mode with Multi-Model Resilience (3.5 Flash-Lite -> 3.8 Flash -> Offline Local 0.5B failover for household math)
-      val contextFramedPrompt = buildContextFramedPrompt(cleanInput, snapshot)
-      val conversationContents = buildAlternatingConversationContents(
-        priorTurns = priorHistory.map { msg ->
-          (if (msg.sender == ChatSender.USER) "user" else "model") to msg.text
-        },
-        finalUserPrompt = contextFramedPrompt
-      )
+      val conversationContents = withContext(Dispatchers.Default) {
+        val contextFramedPrompt = buildContextFramedPrompt(cleanInput, snapshot)
+        buildAlternatingConversationContents(
+          priorTurns = priorHistory.map { msg ->
+            (if (msg.sender == ChatSender.USER) "user" else "model") to msg.text
+          },
+          finalUserPrompt = contextFramedPrompt
+        )
+      }
 
       val cloudAttempt = executeResilientCloudGeneration(conversationContents, snapshot.plainEnglish)
       if (cloudAttempt != null) {
@@ -373,19 +383,31 @@ class MaaChatViewModel(
     timeoutMs: Long
   ): String {
     val accumulated = StringBuilder()
+    var lastEmitNs = 0L
     withTimeout(timeoutMs) {
       model.generateContentStream(contents).collect { chunk ->
         val piece = chunk.text.orEmpty()
         if (piece.isNotEmpty()) {
           accumulated.append(piece)
-          _uiState.value = MaaChatUiState.Streaming(
-            partialText = accumulated.toString(),
-            engineBadge = streamingBadge
-          )
+          val nowNs = System.nanoTime()
+          if (lastEmitNs == 0L || (nowNs - lastEmitNs) >= 32_000_000L) {
+            lastEmitNs = nowNs
+            _uiState.value = MaaChatUiState.Streaming(
+              partialText = accumulated.toString(),
+              engineBadge = streamingBadge
+            )
+          }
         }
       }
     }
-    return accumulated.toString().trim()
+    val finalText = accumulated.toString().trim()
+    if (finalText.isNotEmpty()) {
+      _uiState.value = MaaChatUiState.Streaming(
+        partialText = finalText,
+        engineBadge = streamingBadge
+      )
+    }
+    return finalText
   }
 
   private suspend fun runLocalMiniInference(

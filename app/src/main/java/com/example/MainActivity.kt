@@ -15,13 +15,13 @@ import com.example.core.perf.GharResourcePrewarmer
 import com.example.ui.navigation.GharNavHost
 import com.example.ui.theme.GharFontWarmup
 import com.example.ui.theme.GharTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-
-    enforcePeak120Hz()
 
     // STEP 1: Configure App Check with launch intent before any UI, ViewModels, or Firebase operations
     configureAppCheck(this, intent)
@@ -31,15 +31,33 @@ class MainActivity : ComponentActivity() {
     val app = application as GharApplication
     val rootContainer = app.rootContainer
 
-    // Start low-priority background compilation of room banners, Skia glyph caches,
-    // household foley WAVs, and instant offline 0.5B LLM weights immediately on UI launch.
-    GharResourcePrewarmer.startWarmup(this, rootContainer)
-
     setContent {
+      // Defer lightweight initial-screen asset warmup until AFTER the first Compose frame commits
+      // so cold-start rendering has 100% of CPU & IO, and defer idle caches until UI settles.
+      androidx.compose.runtime.LaunchedEffect(Unit) {
+        androidx.compose.runtime.withFrameNanos {}
+        val isOnboarded = rootContainer.guestContainer.isOnboardingCompletedLocally ||
+          rootContainer.preferencesRepository.prefsSnapshot.value.onboardingCompleted
+        GharResourcePrewarmer.startWarmup(
+          context = this@MainActivity,
+          rootContainer = rootContainer,
+          isOnboardingCompleted = isOnboarded
+        )
+      }
       GharFontWarmup.PrewarmComposeFontResolver()
-      val prefs by rootContainer.preferencesRepository.prefsSnapshot.collectAsStateWithLifecycle()
 
-      GharTheme(themeMode = prefs.themeMode, dynamicColor = prefs.useDynamicColor) {
+      val themeSliceFlow = androidx.compose.runtime.remember(rootContainer) {
+        rootContainer.preferencesRepository.prefsSnapshot
+          .map { it.themeMode to it.useDynamicColor }
+          .distinctUntilChanged()
+      }
+      val initialPrefs = rootContainer.preferencesRepository.prefsSnapshot.value
+      val themeSlice by themeSliceFlow.collectAsStateWithLifecycle(
+        initialValue = initialPrefs.themeMode to initialPrefs.useDynamicColor
+      )
+      val (themeMode, useDynamicColor) = themeSlice
+
+      GharTheme(themeMode = themeMode, dynamicColor = useDynamicColor) {
         Surface(
           modifier = Modifier.fillMaxSize(),
           color = MaterialTheme.colorScheme.background
@@ -47,33 +65,6 @@ class MainActivity : ComponentActivity() {
           GharNavHost(rootContainer = rootContainer)
         }
       }
-    }
-  }
-
-  override fun onWindowFocusChanged(hasFocus: Boolean) {
-    super.onWindowFocusChanged(hasFocus)
-    if (hasFocus) {
-      enforcePeak120Hz()
-    }
-  }
-
-  private fun enforcePeak120Hz() {
-    val window = window ?: return
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-      val display = window.decorView.display ?: windowManager.defaultDisplay
-      val modes = display?.supportedModes.orEmpty()
-      val maxMode = modes.maxByOrNull { it.refreshRate }
-      val maxRate = maxMode?.refreshRate ?: 120f
-      val lp = window.attributes
-      lp.preferredRefreshRate = maxRate.coerceAtLeast(120f)
-      if (maxMode != null) {
-        lp.preferredDisplayModeId = maxMode.modeId
-      }
-      window.attributes = lp
-    } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-      val lp = window.attributes
-      lp.preferredRefreshRate = 120f
-      window.attributes = lp
     }
   }
 }

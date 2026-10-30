@@ -382,7 +382,9 @@ fun BalconyScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
               ) {
-                val activeRoutines = prefs.dailyRoutines.filter { it.enabled }
+                val activeRoutines = remember(prefs.dailyRoutines) {
+                  prefs.dailyRoutines.filter { it.enabled }
+                }
                 val routineSummaryValue = when {
                   activeRoutines.isEmpty() -> "Off"
                   activeRoutines.size == 1 -> activeRoutines.first().formattedTime()

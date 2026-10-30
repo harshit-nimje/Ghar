@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -309,7 +310,7 @@ fun IllustratedRoomBanner(
     modifier = modifier
       .fillMaxWidth()
       .height(heroHeight)
-      .clip(RoundedCornerShape(bottomStart = 0.dp, bottomEnd = 0.dp))
+      .clipToBounds()
   ) {
     Image(
       painter = rememberCachedGharPainter(artworkRes),
@@ -490,7 +491,7 @@ fun KitchenGreetingHero(
     modifier = modifier
       .fillMaxWidth()
       .height(306.dp)
-      .clip(RoundedCornerShape(0.dp))
+      .clipToBounds()
       .testTag("kitchen_greeting_hero")
   ) {
     Image(
@@ -870,7 +871,7 @@ fun TactileCoinMedallion(
 ) {
   val interactionSource = remember { MutableInteractionSource() }
   val isPressed by interactionSource.collectIsPressedAsState()
-  val scale by animateFloatAsState(
+  val scaleState = animateFloatAsState(
     targetValue = if (isPressed) 0.93f else 1f,
     animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
     label = "coinPress"
@@ -886,8 +887,9 @@ fun TactileCoinMedallion(
     modifier = modifier
       .defaultMinSize(minWidth = 72.dp, minHeight = 86.dp)
       .graphicsLayer {
-        scaleX = scale
-        scaleY = scale
+        val s = scaleState.value
+        scaleX = s
+        scaleY = s
       }
       .let { base ->
         if (positionRef != null && onPositionedCenter == null) {

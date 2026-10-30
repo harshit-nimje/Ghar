@@ -271,7 +271,7 @@ fun PapaGuidanceDialog(
   }
 
   val ambientTransition = rememberInfiniteTransition(label = "papa_room_ambient")
-  val cloudFloatDp by ambientTransition.animateFloat(
+  val cloudFloatState = ambientTransition.animateFloat(
     initialValue = -1.6f,
     targetValue = 1.6f,
     animationSpec = infiniteRepeatable(
@@ -280,6 +280,8 @@ fun PapaGuidanceDialog(
     ),
     label = "papa_cloud_float"
   )
+  val papaBubbleOffsetProvider = remember(cloudFloatState) { { cloudFloatState.value * 0.6f } }
+  val userBubbleOffsetProvider = remember(cloudFloatState) { { -cloudFloatState.value } }
 
   Dialog(
     onDismissRequest = onDismiss,
@@ -455,7 +457,7 @@ fun PapaGuidanceDialog(
                 goal = goal,
                 plainEnglish = plainEnglish,
                 stashedIds = stashedIds,
-                floatOffsetDp = cloudFloatDp * 0.6f,
+                floatOffsetDpProvider = papaBubbleOffsetProvider,
                 referralToMaaPrompt = referralToMaaPrompt,
                 onHandoffToMaa = if (onSwitchToMaa != null) {
                   { promptToPass ->
@@ -509,7 +511,7 @@ fun PapaGuidanceDialog(
                 isInputFocused = isInputFocused,
                 latestUserMessage = latestUserMessage,
                 plainEnglish = plainEnglish,
-                floatOffsetDp = -cloudFloatDp,
+                floatOffsetDpProvider = userBubbleOffsetProvider,
                 onBubbleTap = {
                   runCatching { inputFocusRequester.requestFocus() }
                 },
@@ -781,7 +783,7 @@ private fun PapaSpatialSpeechBubble(
   goal: SavingsGoal,
   plainEnglish: Boolean,
   stashedIds: Set<String>,
-  floatOffsetDp: Float,
+  floatOffsetDpProvider: () -> Float,
   referralToMaaPrompt: String?,
   onHandoffToMaa: ((String) -> Unit)?,
   onOpenSourceUrl: (String) -> Unit,
@@ -798,7 +800,7 @@ private fun PapaSpatialSpeechBubble(
 
   Column(
     modifier = modifier.graphicsLayer {
-      translationY = floatOffsetDp.dp.toPx()
+      translationY = floatOffsetDpProvider().dp.toPx()
     }
   ) {
     Surface(
@@ -1130,12 +1132,12 @@ private fun PapaUserSpatialThoughtBubble(
   isInputFocused: Boolean,
   latestUserMessage: PapaChatMessage?,
   plainEnglish: Boolean,
-  floatOffsetDp: Float,
+  floatOffsetDpProvider: () -> Float,
   onBubbleTap: () -> Unit,
   modifier: Modifier = Modifier
 ) {
   val isActivelyThinking = liveDraftText.isNotBlank() || isInputFocused
-  val bubbleScale by animateFloatAsState(
+  val bubbleScaleState = animateFloatAsState(
     targetValue = if (isActivelyThinking) 1.02f else 1f,
     animationSpec = spring(
       dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -1154,9 +1156,10 @@ private fun PapaUserSpatialThoughtBubble(
   Column(
     horizontalAlignment = Alignment.End,
     modifier = modifier.graphicsLayer {
-      scaleX = bubbleScale
-      scaleY = bubbleScale
-      translationY = floatOffsetDp.dp.toPx()
+      val s = bubbleScaleState.value
+      scaleX = s
+      scaleY = s
+      translationY = floatOffsetDpProvider().dp.toPx()
     }
   ) {
     Surface(

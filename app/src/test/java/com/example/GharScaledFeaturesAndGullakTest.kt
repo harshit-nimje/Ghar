@@ -329,8 +329,15 @@ class GharScaledFeaturesAndGullakTest {
   @Test
   fun gharResourcePrewarmer_compilesAssetsInBackgroundWithoutError() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
+    com.example.ui.common.GharImageCache.trimMemory(clearAll = true)
+    assertEquals(0, com.example.ui.common.GharImageCache.currentCachedBytes())
+
     val root = DefaultRootAppContainer(context)
-    com.example.core.perf.GharResourcePrewarmer.startWarmup(context, root)
+    com.example.core.perf.GharResourcePrewarmer.startWarmup(
+      context = context,
+      rootContainer = root,
+      isOnboardingCompleted = true
+    )
 
     var attempts = 0
     while (!com.example.core.perf.GharResourcePrewarmer.isFullyWarmed.value && attempts < 60) {
@@ -338,10 +345,25 @@ class GharScaledFeaturesAndGullakTest {
       attempts++
     }
     assertTrue(
-      "Background resource prewarmer should complete cleanly during onboarding",
+      "Background resource prewarmer should complete cleanly",
       com.example.core.perf.GharResourcePrewarmer.isFullyWarmed.value
     )
     assertEquals(1.0f, com.example.core.perf.GharResourcePrewarmer.warmupProgress.value, 0.001f)
+
+    // Verify bounded LRU cache stays strictly below maxCacheBytes and does NOT eagerly decode offscreen rooms
+    assertTrue(com.example.ui.common.GharImageCache.maxCacheBytes in (8 * 1024 * 1024)..(16 * 1024 * 1024))
+    assertTrue(
+      "Cached bytes must remain bounded within maxCacheBytes",
+      com.example.ui.common.GharImageCache.currentCachedBytes() <= com.example.ui.common.GharImageCache.maxCacheBytes
+    )
+    assertNull(
+      "Offscreen Balcony banner should NOT be eagerly decoded during Kitchen startup",
+      com.example.ui.common.GharImageCache.getCached(R.drawable.img_balcony_dusk_1792931332537)
+    )
+
+    // Verify low-memory trim clears cache cleanly
+    com.example.ui.common.GharImageCache.trimMemory(clearAll = true)
+    assertEquals(0, com.example.ui.common.GharImageCache.currentCachedBytes())
   }
 
   @Test

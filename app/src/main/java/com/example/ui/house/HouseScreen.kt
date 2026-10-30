@@ -16,17 +16,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -50,7 +50,8 @@ import com.example.ui.common.rememberGharUndoController
 import com.example.ui.kitchen.KitchenScreen
 import com.example.ui.livingroom.LivingRoomScreen
 import com.example.ui.study.StudyScreen
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Composable
@@ -87,23 +88,11 @@ fun HouseScreen(
     }
   }
 
-  // Staggered idle-frame pre-warming: Frame 1 composes only Kitchen (<16ms cold start),
-  // then idle frames warm the remaining 4 rooms ~85ms apart so the very first swipe or tab tap
-  // hits an already-composed, zero-jank room tree.
-  var prewarmedBeyondCount by remember { mutableIntStateOf(0) }
-  LaunchedEffect(Unit) {
-    withFrameNanos {}
-    for (step in 1..4) {
-      delay(85L)
-      while (pagerState.isScrollInProgress) {
-        delay(32L)
-      }
-      withFrameNanos {}
-      prewarmedBeyondCount = step
-    }
-  }
-
-  val currentRoom = rooms[pagerState.currentPage.coerceIn(0, rooms.lastIndex)]
+  // Keep beyondViewportPageCount = 0 so cold start and normal state updates compose ONLY the
+  // active room (and incoming neighbor during an active swipe), avoiding 5x synchronous main-thread
+  // room compositions and 5x fan-out recompositions on every ledger/preference update.
+  val currentPage by remember { derivedStateOf { pagerState.currentPage.coerceIn(0, rooms.lastIndex) } }
+  val currentRoom = rooms[currentPage]
   val undoController = rememberGharUndoController()
   val coroutineScope = rememberCoroutineScope()
 
@@ -111,17 +100,13 @@ fun HouseScreen(
   val dockJumpEntrance = remember { Animatable(1f) }
   var dockJumpTargetPage by remember { mutableIntStateOf(-1) }
 
-  // Guarantee top-of-page scroll reset on horizontal swipe AND reset offscreen previous room
-  // so peeking back during a drag already shows the top of that page.
+  // Reset room scroll position cleanly once per settled page transition without duplicate snaps.
   var lastSettledPage by remember { mutableIntStateOf(pagerState.settledPage) }
-  LaunchedEffect(pagerState.currentPage) {
-    snapRoomToTop(rooms[pagerState.currentPage.coerceIn(0, rooms.lastIndex)])
-  }
   LaunchedEffect(pagerState.settledPage) {
     val settled = pagerState.settledPage.coerceIn(0, rooms.lastIndex)
     val previous = lastSettledPage.coerceIn(0, rooms.lastIndex)
-    snapRoomToTop(rooms[settled])
     if (previous != settled) {
+      snapRoomToTop(rooms[settled])
       snapRoomToTop(rooms[previous])
       lastSettledPage = settled
     }
@@ -153,7 +138,17 @@ fun HouseScreen(
 
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
-  val prefs by container.preferencesRepository.prefsSnapshot.collectAsStateWithLifecycle()
+  val housePrefsSliceFlow = remember(container) {
+    container.preferencesRepository.prefsSnapshot
+      .map { snap -> Triple(snap.isLoaded, snap.plainEnglishMode, snap.seenRoomSplashes) }
+      .distinctUntilChanged()
+  }
+  val housePrefsSlice by housePrefsSliceFlow.collectAsStateWithLifecycle(
+    initialValue = container.preferencesRepository.prefsSnapshot.value.let {
+      Triple(it.isLoaded, it.plainEnglishMode, it.seenRoomSplashes)
+    }
+  )
+  val (prefsLoaded, plainEnglishMode, seenRoomSplashes) = housePrefsSlice
   var lastSmsRefreshAtMs by remember { mutableLongStateOf(0L) }
 
   // Zero-constant-RAM foreground catch-up: when returning to Ghar with READ_SMS granted,
@@ -192,8 +187,8 @@ fun HouseScreen(
   var optimisticSeenRooms by remember { mutableStateOf(emptySet<String>()) }
 
   val activeSplashRoom: HouseRoom? = manualGuideRoom ?: run {
-    if (prefs.isLoaded &&
-      currentRoom.name !in prefs.seenRoomSplashes &&
+    if (prefsLoaded &&
+      currentRoom.name !in seenRoomSplashes &&
       currentRoom.name !in optimisticSeenRooms
     ) {
       currentRoom
@@ -206,9 +201,18 @@ fun HouseScreen(
     jumpToRoomFromTop(HouseRoom.KITCHEN)
   }
 
+  val onRoomSelectedStable: (HouseRoom) -> Unit = remember {
+    { room -> jumpToRoomFromTop(room) }
+  }
+  val onShowKitchenGuide = remember { { manualGuideRoom = HouseRoom.KITCHEN } }
+  val onShowBhaiGuide = remember { { manualGuideRoom = HouseRoom.BHAI_ROOM } }
+  val onShowLivingGuide = remember { { manualGuideRoom = HouseRoom.LIVING_ROOM } }
+  val onShowStudyGuide = remember { { manualGuideRoom = HouseRoom.STUDY } }
+  val onShowBalconyGuide = remember { { manualGuideRoom = HouseRoom.BALCONY } }
+
   CompositionLocalProvider(
     LocalGharUndoController provides undoController,
-    LocalPlainEnglishMode provides prefs.plainEnglishMode
+    LocalPlainEnglishMode provides plainEnglishMode
   ) {
     Scaffold(
       modifier = modifier.fillMaxSize(),
@@ -223,9 +227,7 @@ fun HouseScreen(
       bottomBar = {
         HallwayAffordance(
           currentRoom = currentRoom,
-          onRoomSelected = { room ->
-            jumpToRoomFromTop(room)
-          }
+          onRoomSelected = onRoomSelectedStable
         )
       }
     ) { paddingValues ->
@@ -236,44 +238,47 @@ fun HouseScreen(
       ) {
         HorizontalPager(
           state = pagerState,
-          beyondViewportPageCount = prewarmedBeyondCount,
+          beyondViewportPageCount = 0,
           key = { page -> rooms[page].name },
           modifier = Modifier.fillMaxSize()
         ) { page ->
           val room = rooms[page]
-          val roomModifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-              if (dockJumpTargetPage == page) {
+          val isJumpTarget = dockJumpTargetPage == page
+          val roomModifier = if (isJumpTarget) {
+            Modifier
+              .fillMaxSize()
+              .graphicsLayer {
                 val p = dockJumpEntrance.value
                 alpha = 0.92f + 0.08f * p
                 translationY = (1f - p) * 10.dp.toPx()
               }
-            }
+          } else {
+            Modifier.fillMaxSize()
+          }
 
           when (room) {
             HouseRoom.KITCHEN -> KitchenScreen(
               container = container,
               listState = kitchenListState,
-              onShowRoomGuide = { manualGuideRoom = HouseRoom.KITCHEN },
+              onShowRoomGuide = onShowKitchenGuide,
               modifier = roomModifier
             )
             HouseRoom.BHAI_ROOM -> BhaiRoomScreen(
               container = container,
               listState = bhaiListState,
-              onShowRoomGuide = { manualGuideRoom = HouseRoom.BHAI_ROOM },
+              onShowRoomGuide = onShowBhaiGuide,
               modifier = roomModifier
             )
             HouseRoom.LIVING_ROOM -> LivingRoomScreen(
               container = container,
               listState = livingListState,
-              onShowRoomGuide = { manualGuideRoom = HouseRoom.LIVING_ROOM },
+              onShowRoomGuide = onShowLivingGuide,
               modifier = roomModifier
             )
             HouseRoom.STUDY -> StudyScreen(
               container = container,
               listState = studyListState,
-              onShowRoomGuide = { manualGuideRoom = HouseRoom.STUDY },
+              onShowRoomGuide = onShowStudyGuide,
               modifier = roomModifier
             )
             HouseRoom.BALCONY -> BalconyScreen(
@@ -281,7 +286,7 @@ fun HouseScreen(
               listState = balconyListState,
               onResetToOnboarding = onResetToOnboarding,
               onSignOut = onSignOut,
-              onShowRoomGuide = { manualGuideRoom = HouseRoom.BALCONY },
+              onShowRoomGuide = onShowBalconyGuide,
               modifier = roomModifier
             )
           }

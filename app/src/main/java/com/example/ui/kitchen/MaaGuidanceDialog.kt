@@ -275,9 +275,9 @@ fun MaaGuidanceDialog(
     }
   }
 
-  // Subtle ambient breathing float for the thought & speech clouds
+  // Subtle ambient breathing float for the thought & speech clouds — read ONLY inside graphicsLayer!
   val ambientTransition = rememberInfiniteTransition(label = "maa_room_ambient")
-  val cloudFloatDp by ambientTransition.animateFloat(
+  val cloudFloatState = ambientTransition.animateFloat(
     initialValue = -1.8f,
     targetValue = 1.8f,
     animationSpec = infiniteRepeatable(
@@ -286,6 +286,8 @@ fun MaaGuidanceDialog(
     ),
     label = "cloud_float"
   )
+  val maaBubbleOffsetProvider = remember(cloudFloatState) { { cloudFloatState.value * 0.6f } }
+  val userBubbleOffsetProvider = remember(cloudFloatState) { { -cloudFloatState.value } }
 
   Dialog(
     onDismissRequest = onDismiss,
@@ -469,7 +471,7 @@ fun MaaGuidanceDialog(
                 stashedIds = stashedIds,
                 isMiniInstalled = isMiniInstalled,
                 isMiniInstalling = isMiniInstalling,
-                floatOffsetDp = cloudFloatDp * 0.6f,
+                floatOffsetDpProvider = maaBubbleOffsetProvider,
                 referralToPapaPrompt = referralToPapaPrompt,
                 onHandoffToPapa = if (onSwitchToPapa != null) {
                   { promptToPass ->
@@ -521,7 +523,7 @@ fun MaaGuidanceDialog(
                 isInputFocused = isInputFocused,
                 latestUserMessage = latestUserMessage,
                 plainEnglish = plainEnglish,
-                floatOffsetDp = -cloudFloatDp,
+                floatOffsetDpProvider = userBubbleOffsetProvider,
                 onBubbleTap = {
                   runCatching { inputFocusRequester.requestFocus() }
                 },
@@ -805,7 +807,7 @@ private fun MaaSpatialSpeechBubble(
   stashedIds: Set<String>,
   isMiniInstalled: Boolean,
   isMiniInstalling: Boolean,
-  floatOffsetDp: Float,
+  floatOffsetDpProvider: () -> Float,
   referralToPapaPrompt: String?,
   onHandoffToPapa: ((String) -> Unit)?,
   onToggleStash: (MaaChatMessage) -> Unit,
@@ -822,7 +824,7 @@ private fun MaaSpatialSpeechBubble(
 
   Column(
     modifier = modifier.graphicsLayer {
-      translationY = floatOffsetDp.dp.toPx()
+      translationY = floatOffsetDpProvider().dp.toPx()
     }
   ) {
     Surface(
@@ -1116,12 +1118,12 @@ private fun UserSpatialThoughtBubble(
   isInputFocused: Boolean,
   latestUserMessage: MaaChatMessage?,
   plainEnglish: Boolean,
-  floatOffsetDp: Float,
+  floatOffsetDpProvider: () -> Float,
   onBubbleTap: () -> Unit,
   modifier: Modifier = Modifier
 ) {
   val isActivelyThinking = liveDraftText.isNotBlank() || isInputFocused
-  val bubbleScale by animateFloatAsState(
+  val bubbleScaleState = animateFloatAsState(
     targetValue = if (isActivelyThinking) 1.02f else 1f,
     animationSpec = spring(
       dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -1140,9 +1142,10 @@ private fun UserSpatialThoughtBubble(
   Column(
     horizontalAlignment = Alignment.End,
     modifier = modifier.graphicsLayer {
-      scaleX = bubbleScale
-      scaleY = bubbleScale
-      translationY = floatOffsetDp.dp.toPx()
+      val s = bubbleScaleState.value
+      scaleX = s
+      scaleY = s
+      translationY = floatOffsetDpProvider().dp.toPx()
     }
   ) {
     Surface(

@@ -195,8 +195,10 @@ fun KitchenScreen(
   val stashedChitthis by container.chitthiRepository.chitthisState.collectAsStateWithLifecycle()
   val storedQuickChips by container.quickChipRepository.quickChipsState.collectAsStateWithLifecycle()
   val prefs by container.preferencesRepository.prefsSnapshot.collectAsStateWithLifecycle()
-  val quickChipsSeeded by container.preferencesRepository.observeQuickChipsSeeded(container.userId)
-    .collectAsState(initial = false)
+  val quickChipsSeededFlow = remember(container.userId) {
+    container.preferencesRepository.observeQuickChipsSeeded(container.userId)
+  }
+  val quickChipsSeeded by quickChipsSeededFlow.collectAsStateWithLifecycle(initialValue = false)
 
   val commitmentsSummary = remember(commitments, transactions, profile.monthStartDay) {
     HouseholdAnalyticsEngine.evaluateCommitments(
@@ -309,6 +311,13 @@ fun KitchenScreen(
           tx.category.displayLabel(plainEnglish).lowercase().contains(query)
       }
       matchesFilter && matchesSearch
+    }
+  }
+  val visibleTransactions = remember(filteredTransactions, visibleLimit) {
+    if (filteredTransactions.size <= visibleLimit) {
+      filteredTransactions
+    } else {
+      filteredTransactions.subList(0, visibleLimit)
     }
   }
 
@@ -441,7 +450,7 @@ fun KitchenScreen(
         Box(modifier = Modifier.padding(horizontal = 16.dp)) {
           SafeToSpendHeroCard(
             result = safeToSpendResult,
-            profile = profile,
+            savingsTargetRupees = profile.savingsTargetRupees,
             spentTodayRupees = spentTodayRupees,
             plainEnglish = plainEnglish,
             detectedBankBalancePaise = prefs.lastDetectedBankBalancePaise
@@ -577,13 +586,16 @@ fun KitchenScreen(
         // Mom/Maa Spending Insight Card
         item(key = "maa_insight_note", contentType = "maa_note") {
           val insightStashedId = currentInsight?.let { "insight_${it.id}" }
-          val isInsightStashed = insightStashedId != null && stashedChitthis.any { it.id == insightStashedId }
+          val isInsightStashed = remember(stashedChitthis, insightStashedId) {
+            insightStashedId != null && stashedChitthis.any { it.id == insightStashedId }
+          }
+          val activeSankalp = prefs.activeHabitSankalp
 
           Box(modifier = Modifier.padding(horizontal = 16.dp)) {
             MaaInsightSection(
               insight = currentInsight,
-              activeSankalp = prefs.activeHabitSankalp,
-              transactionsSincePledge = transactions,
+              activeSankalp = activeSankalp,
+              transactionsSincePledge = if (activeSankalp != null) transactions else emptyList(),
               isStashed = isInsightStashed,
               plainEnglish = plainEnglish,
               onCardClick = {
@@ -888,7 +900,7 @@ fun KitchenScreen(
           }
         } else {
           items(
-            items = filteredTransactions.take(visibleLimit),
+            items = visibleTransactions,
             key = { it.id },
             contentType = { "tx_item" }
           ) { tx ->
@@ -1513,7 +1525,7 @@ private fun KitchenUtilityActionCard(
 @Composable
 private fun SafeToSpendHeroCard(
   result: SafeToSpendResult,
-  profile: BudgetProfile,
+  savingsTargetRupees: Long,
   spentTodayRupees: Long,
   plainEnglish: Boolean,
   detectedBankBalancePaise: Long?
@@ -1655,7 +1667,7 @@ private fun SafeToSpendHeroCard(
           )
           HomelyPebbleStat(
             label = if (plainEnglish) "Target/mo" else "Save Goal",
-            value = CurrencyFormatter.formatCompactRupees(profile.savingsTargetRupees),
+            value = CurrencyFormatter.formatCompactRupees(savingsTargetRupees),
             wash = PastelSage.copy(alpha = 0.16f),
             tint = PastelSage,
             isMoney = true,
@@ -1933,8 +1945,11 @@ private fun TransactionItemCard(
               )
             }
           }
+          val subtitleLine = remember(tx.category, tx.timestamp, plainEnglish) {
+            "${tx.category.displayLabel(plainEnglish)} • ${DateUtils.formatRelativeDate(tx.timestamp)}"
+          }
           Text(
-            text = "${tx.category.displayLabel(plainEnglish)} • ${DateUtils.formatRelativeDate(tx.timestamp)}",
+            text = subtitleLine,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
@@ -1946,12 +1961,15 @@ private fun TransactionItemCard(
       Spacer(modifier = Modifier.width(6.dp))
 
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-          text = if (tx.isExpense) {
+        val formattedAmount = remember(tx.amountRupees, tx.isExpense) {
+          if (tx.isExpense) {
             CurrencyFormatter.formatRupees(tx.amountRupees)
           } else {
             "+${CurrencyFormatter.formatRupees(tx.amountRupees)}"
-          },
+          }
+        }
+        Text(
+          text = formattedAmount,
           style = GharHandStyles.moneyMedium,
           color = if (tx.isExpense) MaterialTheme.colorScheme.onSurface else PastelSage,
           maxLines = 1
@@ -2039,14 +2057,15 @@ private fun ActiveHabitSankalpCard(
   onCompletePledge: (Long) -> Unit,
   onCancelPledge: () -> Unit
 ) {
-  val targetCat = sankalp.targetCategoryName?.let { catName ->
-    runCatching { Category.valueOf(catName) }.getOrNull()
+  val (totalOutsideSpent, countSpent) = remember(sankalp, transactionsSincePledge) {
+    val targetCat = sankalp.targetCategoryName?.let { catName ->
+      runCatching { Category.valueOf(catName) }.getOrNull()
+    }
+    val spends = transactionsSincePledge.filter { tx ->
+      tx.isExpense && (targetCat == null || tx.category == targetCat) && tx.timestamp >= sankalp.createdAtMs
+    }
+    spends.sumOf { it.amountRupees } to spends.size
   }
-  val spendsSincePledge = transactionsSincePledge.filter { tx ->
-    tx.isExpense && (targetCat == null || tx.category == targetCat) && tx.timestamp >= sankalp.createdAtMs
-  }
-  val totalOutsideSpent = spendsSincePledge.sumOf { it.amountRupees }
-  val countSpent = spendsSincePledge.size
 
   HandwrittenHomeNote(
     isMintPaper = false,

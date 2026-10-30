@@ -47,9 +47,9 @@ fun MaaAvatar(
   isSpeaking: Boolean = false,
   modifier: Modifier = Modifier
 ) {
-  val breathScale = if (isSpeaking) {
+  val breathScaleState = if (isSpeaking) {
     val infiniteTransition = rememberInfiniteTransition(label = "maaSpeakingPulse")
-    val scale by infiniteTransition.animateFloat(
+    infiniteTransition.animateFloat(
       initialValue = 0.97f,
       targetValue = 1.05f,
       animationSpec = infiniteRepeatable(
@@ -58,9 +58,8 @@ fun MaaAvatar(
       ),
       label = "maaPulse"
     )
-    scale
   } else {
-    1f
+    null
   }
 
   val bgBrush = remember {
@@ -77,10 +76,11 @@ fun MaaAvatar(
     modifier = modifier
       .size(size)
       .let { base ->
-        if (isSpeaking) {
+        if (breathScaleState != null) {
           base.graphicsLayer {
-            scaleX = breathScale
-            scaleY = breathScale
+            val s = breathScaleState.value
+            scaleX = s
+            scaleY = s
           }
         } else {
           base
@@ -257,9 +257,9 @@ fun PapaAvatar(
   isSpeaking: Boolean = false,
   modifier: Modifier = Modifier
 ) {
-  val breathScale = if (isSpeaking) {
+  val breathScaleState = if (isSpeaking) {
     val infiniteTransition = rememberInfiniteTransition(label = "papaSpeakingPulse")
-    val scale by infiniteTransition.animateFloat(
+    infiniteTransition.animateFloat(
       initialValue = 0.97f,
       targetValue = 1.05f,
       animationSpec = infiniteRepeatable(
@@ -268,9 +268,8 @@ fun PapaAvatar(
       ),
       label = "papaPulse"
     )
-    scale
   } else {
-    1f
+    null
   }
 
   val bgBrush = remember {
@@ -287,10 +286,11 @@ fun PapaAvatar(
     modifier = modifier
       .size(size)
       .let { base ->
-        if (isSpeaking) {
+        if (breathScaleState != null) {
           base.graphicsLayer {
-            scaleX = breathScale
-            scaleY = breathScale
+            val s = breathScaleState.value
+            scaleX = s
+            scaleY = s
           }
         } else {
           base

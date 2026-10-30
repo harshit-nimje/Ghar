@@ -1,0 +1,26 @@
+# Baseline Profile & ART Ahead-of-Time (AOT) compilation rules for Ghar
+# Prioritizes cold startup, Rasoi dashboard scrolling, room pager navigation, and custom canvas drawing.
+
+HSPLcom/example/GharApplication;->**(**)**
+HSPLcom/example/DefaultRootAppContainer;->**(**)**
+HSPLcom/example/MainActivity;->**(**)**
+HSPLcom/example/data/local/LocalHouseholdVault;->**(**)**
+HSPLcom/example/data/preferences/PreferencesRepository;->**(**)**
+HSPLcom/example/core/perf/GharResourcePrewarmer;->**(**)**
+HSPLcom/example/ui/common/GharImageCache;->**(**)**
+HSPLcom/example/ui/common/GharImageCacheKt;->**(**)**
+HSPLcom/example/ui/navigation/GharNavigationKt;->**(**)**
+HSPLcom/example/ui/house/HouseScreenKt;->**(**)**
+HSPLcom/example/ui/kitchen/KitchenScreenKt;->**(**)**
+HSPLcom/example/ui/kitchen/QuickChipsSectionKt;->**(**)**
+HSPLcom/example/ui/bhairoom/BhaiRoomScreenKt;->**(**)**
+HSPLcom/example/ui/livingroom/LivingRoomScreenKt;->**(**)**
+HSPLcom/example/ui/study/StudyScreenKt;->**(**)**
+HSPLcom/example/ui/balcony/BalconyScreenKt;->**(**)**
+HSPLcom/example/ui/common/DynamicIllustrationsKt;->**(**)**
+HSPLcom/example/ui/common/CharacterAvatarsKt;->**(**)**
+HSPLcom/example/ui/common/HallwayAffordanceKt;->**(**)**
+HSPLcom/example/core/engine/SafeToSpendCalculator;->**(**)**
+HSPLcom/example/core/engine/HouseholdAnalyticsEngine;->**(**)**
+HSPLcom/example/core/util/CurrencyFormatter;->**(**)**
+HSPLcom/example/core/util/DateUtils;->**(**)**

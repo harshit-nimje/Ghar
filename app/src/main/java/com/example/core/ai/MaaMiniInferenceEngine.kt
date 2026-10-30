@@ -21,9 +21,11 @@ import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.roundToLong
 import kotlin.math.sqrt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 
 enum class MaaMiniIntent {
   AFFORDABILITY_CHECK,
@@ -277,7 +279,7 @@ class MaaMiniInferenceEngine internal constructor(
         delay(tokenDelayMs)
       }
     }
-  }
+  }.flowOn(Dispatchers.Default)
 
   /**
    * Generates Papa's calm, analytical, long-term financial & investment reply using the
@@ -362,7 +364,7 @@ class MaaMiniInferenceEngine internal constructor(
         delay(tokenDelayMs)
       }
     }
-  }
+  }.flowOn(Dispatchers.Default)
 
   private fun extractPapaConversationMemory(history: List<PapaChatMessage>): ConversationMemory {
     if (history.isEmpty()) return ConversationMemory()
@@ -473,7 +475,7 @@ class MaaMiniInferenceEngine internal constructor(
       MaaMiniIntent.BILL_SPLIT_AND_MATH -> {
         if (lower.contains("emi") || lower.contains("loan")) {
           val principal = (effectiveAmount ?: 100_000L).coerceAtLeast(5_000L)
-          val months = Regex("\\b(\\d{1,3})\\s*(?:m|mo|months?)\\b", RegexOption.IGNORE_CASE)
+          val months = EMI_TENURE_MONTHS_REGEX
             .find(clause)?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(3, 240) ?: 24
           val rate = 11.0
           val rMonthly = rate / 1200.0
@@ -568,7 +570,7 @@ class MaaMiniInferenceEngine internal constructor(
 
   private fun extractDerivedAmountForFollowUp(firstClause: String, firstReply: String): Long? {
     if (firstClause.contains("split", ignoreCase = true) || firstClause.contains("divide", ignoreCase = true)) {
-      val shareMatch = Regex("comes to ₹([0-9,]+)").find(firstReply)
+      val shareMatch = DERIVED_SHARE_REGEX.find(firstReply)
       shareMatch?.groupValues?.getOrNull(1)?.replace(",", "")?.toLongOrNull()?.let { return it }
     }
     return null
@@ -672,10 +674,10 @@ class MaaMiniInferenceEngine internal constructor(
     // 1. EMI calculation: "EMI for 60000 at 12% for 12 months"
     if (lower.contains("emi")) {
       val principal = numbers.firstOrNull { it >= 1_000L } ?: memory.lastMentionedRupees ?: 50_000L
-      val rateMatch = Regex("(\\d{1,2}(?:\\.\\d+)?)\\s*%").find(lower)
+      val rateMatch = PERCENTAGE_NUMBER_REGEX.find(lower)
       val annualRate = rateMatch?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: 12.0
-      val monthsMatch = Regex("(\\d{1,3})\\s*(month|months|mo)").find(lower)
-      val yearsMatch = Regex("(\\d{1,2})\\s*(year|years|yr)").find(lower)
+      val monthsMatch = MONTHS_COUNT_REGEX.find(lower)
+      val yearsMatch = YEARS_COUNT_REGEX.find(lower)
       val tenureMonths = when {
         monthsMatch != null -> monthsMatch.groupValues[1].toIntOrNull()?.coerceIn(1, 360) ?: 12
         yearsMatch != null -> (yearsMatch.groupValues[1].toIntOrNull()?.coerceIn(1, 30) ?: 1) * 12
@@ -694,8 +696,8 @@ class MaaMiniInferenceEngine internal constructor(
     }
 
     // 2. Bill split: "split 1860 among 4 friends with 5% tax"
-    val splitMatch = Regex("(?:split|divide|among|between)\\D*(\\d{1,2})\\b").find(lower)
-      ?: Regex("\\b(\\d{1,2})\\s*(?:people|friends|of us|ways|persons)\\b").find(lower)
+    val splitMatch = SPLIT_AMONG_REGEX.find(lower)
+      ?: SPLIT_PEOPLE_REGEX.find(lower)
     if (splitMatch != null || lower.contains("split")) {
       val people = splitMatch?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(2, 50)
         ?: numbers.lastOrNull { it in 2L..25L }?.toInt()
@@ -703,7 +705,7 @@ class MaaMiniInferenceEngine internal constructor(
       val baseBill = numbers.firstOrNull { it != people.toLong() && it >= 20L }
         ?: memory.lastMentionedRupees
         ?: 1_000L
-      val pctMatch = Regex("(\\d{1,2}(?:\\.\\d+)?)\\s*%").find(lower)
+      val pctMatch = PERCENTAGE_NUMBER_REGEX.find(lower)
       val pct = pctMatch?.groupValues?.getOrNull(1)?.toDoubleOrNull() ?: 0.0
       val adjustedTotal = if (pct > 0.0) {
         if (lower.contains("off") || lower.contains("discount")) {
@@ -724,7 +726,7 @@ class MaaMiniInferenceEngine internal constructor(
     }
 
     // 3. Discount / GST / Expression evaluation
-    val pctMatch = Regex("(\\d{1,2}(?:\\.\\d+)?)\\s*%").find(lower)
+    val pctMatch = PERCENTAGE_NUMBER_REGEX.find(lower)
     if (pctMatch != null && numbers.isNotEmpty()) {
       val pct = pctMatch.groupValues[1].toDoubleOrNull() ?: 10.0
       val base = numbers.maxOrNull() ?: 1_000L
@@ -740,7 +742,7 @@ class MaaMiniInferenceEngine internal constructor(
       }
     }
 
-    val exprCandidate = query.replace(Regex("[^0-9+\\-*/×÷%.()]"), "")
+    val exprCandidate = query.replace(NON_MATH_EXPR_REGEX, "")
     val evaluated = HisaabCalculatorEngine.evaluateRoundedRupees(exprCandidate)
     if (evaluated != null && evaluated > 0L) {
       return "${prefix}that comes out to ${CurrencyFormatter.formatRupees(evaluated)}. Compared against your daily budget, you have ${CurrencyFormatter.formatRupees(safeToday)} Safe to Spend Today."
@@ -759,7 +761,7 @@ class MaaMiniInferenceEngine internal constructor(
   ): String {
     val plain = snap.plainEnglish
     val lower = query.lowercase()
-    val yearsMatch = Regex("(\\d{1,2})\\s*(?:year|years|yr|yrs)").find(lower)
+    val yearsMatch = SIP_YEARS_REGEX.find(lower)
     val years = yearsMatch?.groupValues?.getOrNull(1)?.toIntOrNull()?.coerceIn(1, 30) ?: 5
     val monthlyContribution = numbers.firstOrNull { it != years.toLong() && it >= 100L }
       ?: memory.lastMentionedRupees
@@ -770,7 +772,7 @@ class MaaMiniInferenceEngine internal constructor(
       lower.contains("rd") || lower.contains("recurring deposit") -> InstrumentType.RD
       else -> InstrumentType.SIP
     }
-    val rateMatch = Regex("(\\d{1,2}(?:\\.\\d+)?)\\s*%").find(lower)
+    val rateMatch = PERCENTAGE_NUMBER_REGEX.find(lower)
     val annualRate = rateMatch?.groupValues?.getOrNull(1)?.toDoubleOrNull()
       ?: instrument.typicalAnnualReturnPercent
 
@@ -900,13 +902,11 @@ class MaaMiniInferenceEngine internal constructor(
   ): String {
     val plain = snap.plainEnglish
     val lower = query.lowercase()
+    val daysMatch = PROJECTION_DAYS_REGEX.find(lower)
+    val monthsMatch = PROJECTION_MONTHS_REGEX.find(lower)
     val daysMultiplier = when {
-      Regex("\\b(\\d{1,3})\\s*days?\\b").containsMatchIn(lower) -> {
-        Regex("\\b(\\d{1,3})\\s*days?\\b").find(lower)!!.groupValues[1].toLongOrNull() ?: 30L
-      }
-      Regex("\\b(\\d{1,2})\\s*months?\\b").containsMatchIn(lower) -> {
-        (Regex("\\b(\\d{1,2})\\s*months?\\b").find(lower)!!.groupValues[1].toLongOrNull() ?: 1L) * 30L
-      }
+      daysMatch != null -> daysMatch.groupValues[1].toLongOrNull() ?: 30L
+      monthsMatch != null -> (monthsMatch.groupValues[1].toLongOrNull() ?: 1L) * 30L
       lower.contains("year") || lower.contains("annual") -> 365L
       lower.contains("week") -> 7L
       else -> 30L
@@ -1265,6 +1265,19 @@ class MaaMiniInferenceEngine internal constructor(
       "\\b(can|should|what|when|how|check|tell|is|are|will|afford|due|have|split)\\b",
       RegexOption.IGNORE_CASE
     )
+    private val EMI_TENURE_MONTHS_REGEX = Regex("\\b(\\d{1,3})\\s*(?:m|mo|months?)\\b", RegexOption.IGNORE_CASE)
+    private val DERIVED_SHARE_REGEX = Regex("comes to ₹([0-9,]+)")
+    private val PERCENTAGE_NUMBER_REGEX = Regex("(\\d{1,2}(?:\\.\\d+)?)\\s*%")
+    private val MONTHS_COUNT_REGEX = Regex("(\\d{1,3})\\s*(month|months|mo)")
+    private val YEARS_COUNT_REGEX = Regex("(\\d{1,2})\\s*(year|years|yr)")
+    private val SIP_YEARS_REGEX = Regex("(\\d{1,2})\\s*(?:year|years|yr|yrs)")
+    private val SPLIT_AMONG_REGEX = Regex("(?:split|divide|among|between)\\D*(\\d{1,2})\\b")
+    private val SPLIT_PEOPLE_REGEX = Regex("\\b(\\d{1,2})\\s*(?:people|friends|of us|ways|persons)\\b")
+    private val NON_MATH_EXPR_REGEX = Regex("[^0-9+\\-*/×÷%.()]")
+    private val PROJECTION_DAYS_REGEX = Regex("\\b(\\d{1,3})\\s*days?\\b")
+    private val PROJECTION_MONTHS_REGEX = Regex("\\b(\\d{1,2})\\s*months?\\b")
+    private val NON_ALPHANUMERIC_SPACE_REGEX = Regex("[^a-z0-9\\s]")
+    private val WHITESPACE_SPLIT_REGEX = Regex("\\s+")
 
     internal fun extractAllRupeeNumbers(text: String): List<Long> {
       return RUPEE_AMOUNT_REGEX.findAll(text).mapNotNull { match ->
@@ -1396,11 +1409,11 @@ class MaaMiniInferenceEngine internal constructor(
         .lowercase()
         .replace("₹", " rupee ")
         .replace("%", " percent ")
-        .replace(Regex("[^a-z0-9\\s]"), " ")
+        .replace(NON_ALPHANUMERIC_SPACE_REGEX, " ")
         .trim()
       if (normalized.isEmpty()) return emptyMap()
 
-      val rawTokens = normalized.split(Regex("\\s+")).filter { it.isNotBlank() }
+      val rawTokens = normalized.split(WHITESPACE_SPLIT_REGEX).filter { it.isNotBlank() }
       val counts = HashMap<Int, Float>()
 
       fun bump(feature: String, weight: Float) {

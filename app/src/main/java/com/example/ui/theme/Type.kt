@@ -295,6 +295,8 @@ object GharFontWarmup {
     val resolver = LocalFontFamilyResolver.current
     LaunchedEffect(resolver) {
       if (!composeResolved.compareAndSet(false, true)) return@LaunchedEffect
+      // Wait for first frame commit before resolving non-initial font weights
+      androidx.compose.runtime.withFrameNanos {}
       withContext(Dispatchers.Default) {
         val families = listOf(
           DisplaySerifFontFamily,
@@ -306,8 +308,6 @@ object GharFontWarmup {
         )
         val weights = listOf(
           FontWeight.Normal,
-          FontWeight.Medium,
-          FontWeight.SemiBold,
           FontWeight.Bold
         )
         for (family in families) {

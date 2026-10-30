@@ -228,16 +228,6 @@ fun BhaiRoomScreen(
   var lastAddedRupees by remember { mutableLongStateOf(100L) }
 
   var gullakSquished by remember { mutableStateOf(false) }
-  val gullakScaleX by animateFloatAsState(
-    targetValue = if (gullakSquished) 1.14f else 1.0f,
-    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-    label = "gullakScaleX"
-  )
-  val gullakScaleY by animateFloatAsState(
-    targetValue = if (gullakSquished) 0.88f else 1.0f,
-    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-    label = "gullakScaleY"
-  )
 
   val gullakDrops = remember(transactions) {
     transactions.filter {
@@ -466,8 +456,7 @@ fun BhaiRoomScreen(
             dailySafeAllowanceRupees = safeToSpend.dailyAllowanceRupees,
             unspentTodayRupees = unspentTodayRupees,
             plainEnglish = plainEnglish,
-            gullakScaleX = gullakScaleX,
-            gullakScaleY = gullakScaleY,
+            isGullakSquished = gullakSquished,
             gullakSlotRef = gullakSlotRef,
             onDropCoin = { amountRupees, pos ->
               triggerCoinDrop(amountRupees, pos)
@@ -1340,18 +1329,27 @@ private fun GullakHeroCard(
   dailySafeAllowanceRupees: Long,
   unspentTodayRupees: Long,
   plainEnglish: Boolean,
-  gullakScaleX: Float,
-  gullakScaleY: Float,
+  isGullakSquished: Boolean,
   gullakSlotRef: MutableOffsetRef,
   onDropCoin: (Long, Offset) -> Unit,
   onOpenCustomDeposit: () -> Unit,
   onOpenSetBalance: () -> Unit
 ) {
+  val gullakScaleXState = animateFloatAsState(
+    targetValue = if (isGullakSquished) 1.14f else 1.0f,
+    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+    label = "gullakScaleX"
+  )
+  val gullakScaleYState = animateFloatAsState(
+    targetValue = if (isGullakSquished) 0.88f else 1.0f,
+    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+    label = "gullakScaleY"
+  )
   val btnRef1 = remember { MutableOffsetRef() }
   val btnRef2 = remember { MutableOffsetRef() }
   val btnRef3 = remember { MutableOffsetRef() }
   val btnRef4 = remember { MutableOffsetRef() }
-  val btnRefs = listOf(btnRef1, btnRef2, btnRef3, btnRef4)
+  val btnRefs = remember { listOf(btnRef1, btnRef2, btnRef3, btnRef4) }
 
   val adaptiveCoins = remember(profile, goal, dailySafeAllowanceRupees, unspentTodayRupees, plainEnglish) {
     computeAdaptiveGullakCoins(profile, goal, dailySafeAllowanceRupees, unspentTodayRupees, plainEnglish)
@@ -1421,8 +1419,8 @@ private fun GullakHeroCard(
       Box(
         modifier = Modifier
           .graphicsLayer {
-            scaleX = gullakScaleX
-            scaleY = gullakScaleY
+            scaleX = gullakScaleXState.value
+            scaleY = gullakScaleYState.value
           }
           .onPlaced { gullakSlotRef.coords = it },
         contentAlignment = Alignment.Center
@@ -1491,8 +1489,8 @@ private fun GullakHeroCard(
 
       Spacer(modifier = Modifier.height(12.dp))
 
-      val coinRings = listOf(PastelHoney, ClayGullakColor, PastelTerracotta, PastelSage)
-      val coinFills = listOf(PastelHoney, PastelTerracotta, GoldCoin, PastelSage)
+      val coinRings = remember { listOf(PastelHoney, ClayGullakColor, PastelTerracotta, PastelSage) }
+      val coinFills = remember { listOf(PastelHoney, PastelTerracotta, GoldCoin, PastelSage) }
 
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1631,11 +1629,13 @@ private fun SteppingStoneGoalTrail(goal: SavingsGoal) {
 private fun ReinvestmentCard(goal: SavingsGoal) {
   val instrument = goal.instrumentType
   val basisRupees = if (goal.currentAmountRupees > 0L) goal.currentAmountRupees else goal.targetAmountRupees.coerceAtLeast(1000L)
-  val r = instrument.typicalAnnualReturnPercent / 100.0
-
-  val future1Yr = (basisRupees * (1.0 + r).pow(1)).toLong()
-  val future3Yr = (basisRupees * (1.0 + r).pow(3)).toLong()
-  val future5Yr = (basisRupees * (1.0 + r).pow(5)).toLong()
+  val (milestone1Yr, milestone3Yr, milestone5Yr) = remember(basisRupees, instrument) {
+    val r = instrument.typicalAnnualReturnPercent / 100.0
+    val f1 = CurrencyFormatter.formatCompactRupees((basisRupees * (1.0 + r).pow(1)).toLong())
+    val f3 = CurrencyFormatter.formatCompactRupees((basisRupees * (1.0 + r).pow(3)).toLong())
+    val f5 = CurrencyFormatter.formatCompactRupees((basisRupees * (1.0 + r).pow(5)).toLong())
+    Triple(f1, f3, f5)
+  }
 
   Surface(
     modifier = Modifier
@@ -1703,9 +1703,9 @@ private fun ReinvestmentCard(goal: SavingsGoal) {
       Spacer(modifier = Modifier.height(14.dp))
 
       BotanicalCompoundingVine(
-        milestone1Yr = CurrencyFormatter.formatCompactRupees(future1Yr),
-        milestone3Yr = CurrencyFormatter.formatCompactRupees(future3Yr),
-        milestone5Yr = CurrencyFormatter.formatCompactRupees(future5Yr)
+        milestone1Yr = milestone1Yr,
+        milestone3Yr = milestone3Yr,
+        milestone5Yr = milestone5Yr
       )
     }
   }
@@ -1760,8 +1760,10 @@ private fun GullakActivityCard(
           color = MaterialTheme.colorScheme.onSurfaceVariant
         )
       } else {
+        val recentDrops = remember(drops) { drops.take(10) }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          drops.take(10).forEach { drop ->
+          recentDrops.forEach { drop ->
+            androidx.compose.runtime.key(drop.id) {
             val isDeposit = drop.isExpense
             Surface(
               onClick = { onTransactionClick(drop) },
@@ -1839,6 +1841,7 @@ private fun GullakActivityCard(
                   )
                 }
               }
+            }
             }
           }
         }
