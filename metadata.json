@@ -1,6 +1,6 @@
 {
   "name": "Ghar",
-  "description": "A native budgeting app that gives UPI money back its physical weight, with Maa watching spending with warmth and Bhai building a parallel savings wallet.",
+  "description": "A native Android household finance app built with Kotlin & Jetpack Compose that gives UPI money back its physical weight across five illustrated rooms, featuring tactile Batua & Gullak savings, on-device UPI SMS capture, and warm guidance from Maa and Papa.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
