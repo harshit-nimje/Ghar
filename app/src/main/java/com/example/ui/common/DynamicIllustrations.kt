@@ -1155,7 +1155,7 @@ fun GullakSparkleOverlay(
       .drawWithCache {
         val cx = this.size.width / 2f
         val cy = this.size.height / 2f
-        val r = this.size.width * 0.46f
+        val r = (this.size.width * 0.46f).coerceAtLeast(1f)
         val haloBrush = Brush.radialGradient(
           colors = listOf(
             GoldCoin.copy(alpha = 0.18f),
@@ -1163,7 +1163,7 @@ fun GullakSparkleOverlay(
             Color.Transparent
           ),
           center = Offset(cx, cy),
-          radius = r * 1.05f
+          radius = (r * 1.05f).coerceAtLeast(1f)
         )
         val sparkles = arrayOf(
           Offset(cx - r * 0.78f, cy - r * 0.65f) to 3.4f,
@@ -1355,11 +1355,11 @@ fun HandwrittenHomeNote(
           }
           val stripeTint = Color.White.copy(alpha = 0.34f)
           val center = Offset(w / 2f, h / 2f)
-          val pinR = 6.5.dp.toPx()
+          val pinR = 6.5.dp.toPx().coerceAtLeast(1f)
           val magnetBrush = Brush.radialGradient(
             colors = listOf(Color(0xFFFFF8E5), magnetColor),
             center = Offset(center.x - 1.5f, center.y - 1.5f),
-            radius = pinR * 1.2f
+            radius = (pinR * 1.2f).coerceAtLeast(1f)
           )
           val brassRimStroke = Stroke(width = 1.dp.toPx())
 

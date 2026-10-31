@@ -547,6 +547,29 @@ fun BalconyScreen(
         }
       }
 
+      // Local JSON / CSV Vault Backup & Restore Card
+      item(key = "balcony_vault_backup_csv", contentType = "vault_backup") {
+        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+          BalconyVaultBackupAndCsvCard(
+            container = container,
+            transactions = transactions,
+            plainEnglish = plainEnglish,
+            soundEnabled = soundEnabled
+          )
+        }
+      }
+
+      // Optional Biometric App Lock & 2x2 Home Screen Quick Stamp Widget Card
+      item(key = "balcony_security_and_widget", contentType = "security_widget") {
+        Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+          BalconySecurityAndWidgetCard(
+            container = container,
+            appLockEnabled = prefs.appLockEnabled,
+            plainEnglish = plainEnglish
+          )
+        }
+      }
+
       // Mom / Maa's Interactive Reflection & Saved Notes Access
       item(key = "balcony_chitthi", contentType = "chitthi") {
         Box(modifier = Modifier.padding(horizontal = 16.dp)) {

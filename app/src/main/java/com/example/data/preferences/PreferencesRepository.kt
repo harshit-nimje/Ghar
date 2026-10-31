@@ -221,7 +221,8 @@ data class AppPreferencesSnapshot(
   val lastDetectedBankBalancePaise: Long? = null,
   val maaAiEngineMode: MaaAiEngineMode = MaaAiEngineMode.CLOUD_AUTO,
   val quickChipsSeededUsers: Set<String> = emptySet(),
-  val seenRoomSplashes: Set<String> = emptySet()
+  val seenRoomSplashes: Set<String> = emptySet(),
+  val appLockEnabled: Boolean = false
 ) {
   val isHapticsEnabled: Boolean
     get() = hapticsEnabled
@@ -262,6 +263,7 @@ class PreferencesRepository(private val context: Context) {
     val QUICK_CHIPS_SEEDED_USERS = stringSetPreferencesKey("quick_chips_seeded_users")
     val GUEST_MODE_CHOSEN = booleanPreferencesKey("guest_mode_chosen")
     val SEEN_ROOM_SPLASHES = stringSetPreferencesKey("seen_room_splashes")
+    val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
   }
 
   /**
@@ -298,7 +300,8 @@ class PreferencesRepository(private val context: Context) {
         lastDetectedBankBalancePaise = prefs[Keys.LAST_DETECTED_BANK_BALANCE_PAISE],
         maaAiEngineMode = MaaAiEngineMode.fromName(prefs[Keys.MAA_AI_ENGINE_MODE]),
         quickChipsSeededUsers = prefs[Keys.QUICK_CHIPS_SEEDED_USERS] ?: emptySet(),
-        seenRoomSplashes = prefs[Keys.SEEN_ROOM_SPLASHES] ?: emptySet()
+        seenRoomSplashes = prefs[Keys.SEEN_ROOM_SPLASHES] ?: emptySet(),
+        appLockEnabled = prefs[Keys.APP_LOCK_ENABLED] ?: false
       )
     }
     .stateIn(repoScope, SharingStarted.Eagerly, AppPreferencesSnapshot())
@@ -598,6 +601,55 @@ class PreferencesRepository(private val context: Context) {
         prefs.remove(Keys.ACTIVE_HABIT_SANKALP_RAW)
       } else {
         prefs[Keys.ACTIVE_HABIT_SANKALP_RAW] = ActiveHabitSankalp.encode(sankalp)
+      }
+    }
+  }
+
+  suspend fun setAppLockEnabled(enabled: Boolean) {
+    context.dataStore.edit { prefs ->
+      prefs[Keys.APP_LOCK_ENABLED] = enabled
+    }
+  }
+
+  suspend fun applyRestoredBackupPreferences(
+    userName: String?,
+    onboardingCompleted: Boolean,
+    plainEnglishMode: Boolean?,
+    themeMode: String?,
+    useDynamicColor: Boolean?,
+    soundEnabled: Boolean?,
+    hapticsEnabled: Boolean?,
+    smartRandomNudgesEnabled: Boolean?,
+    autoBalanceAlertsEnabled: Boolean?,
+    guiltSensitivity: GuiltSensitivity?,
+    painDial: PainDial?,
+    habitLeaks: Set<String>?,
+    dailyRoutines: List<DailyReminderRoutine>?
+  ) {
+    context.dataStore.edit { prefs ->
+      if (!userName.isNullOrBlank()) {
+        prefs[Keys.USER_NAME] = userName.trim()
+      }
+      prefs[Keys.ONBOARDING_COMPLETED] = onboardingCompleted
+      plainEnglishMode?.let { prefs[Keys.PLAIN_ENGLISH_MODE] = it }
+      themeMode?.takeIf { it.isNotBlank() }?.let { prefs[Keys.THEME_MODE] = it }
+      useDynamicColor?.let { prefs[Keys.USE_DYNAMIC_COLOR] = it }
+      soundEnabled?.let { prefs[Keys.SOUND_ENABLED] = it }
+      hapticsEnabled?.let { prefs[Keys.HAPTICS_ENABLED] = it }
+      smartRandomNudgesEnabled?.let { prefs[Keys.SMART_RANDOM_NUDGES_ENABLED] = it }
+      autoBalanceAlertsEnabled?.let { prefs[Keys.AUTO_BALANCE_ALERTS_ENABLED] = it }
+      guiltSensitivity?.let { prefs[Keys.GUILT_SENSITIVITY] = it.name }
+      painDial?.let { prefs[Keys.PAIN_DIAL] = it.name }
+      if (!habitLeaks.isNullOrEmpty()) {
+        prefs[Keys.HABIT_LEAKS] = habitLeaks
+      }
+      if (!dailyRoutines.isNullOrEmpty()) {
+        val normalized = dailyRoutines.sortedWith(compareBy({ it.safeHour }, { it.safeMinute }))
+        prefs[Keys.DAILY_ROUTINES_RAW] = DailyReminderRoutine.encodeList(normalized)
+        prefs[Keys.DAILY_REMINDER_ENABLED] = normalized.any { it.enabled }
+        normalized.firstOrNull { it.id == "routine_evening" }?.let {
+          prefs[Keys.DAILY_REMINDER_HOUR] = it.safeHour
+        }
       }
     }
   }

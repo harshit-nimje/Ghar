@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.ghar.wxvkza"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "1.1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -125,6 +125,9 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.firebase.appcheck.recaptcha)
   implementation(libs.firebase.appcheck.debug)
+  implementation(libs.androidx.biometric)
+  implementation(libs.androidx.glance.appwidget)
+  implementation(libs.androidx.glance.material3)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   // implementation(libs.logging.interceptor)

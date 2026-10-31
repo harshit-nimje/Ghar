@@ -21,6 +21,7 @@ import com.example.core.model.SavingsGoal
 import com.example.core.model.StampColorKey
 import com.example.core.model.Transaction
 import com.example.core.model.UserHousehold
+import com.example.ui.widget.GharQuickStampWidgetUpdater
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -516,6 +517,45 @@ class LocalHouseholdVault(
     }
   }
 
+  fun exportPortableJsonObject(): JSONObject {
+    val latest = synchronized(this) { _snapshot.value }
+    return serializeSnapshot(latest, maxTransactions = Int.MAX_VALUE)
+  }
+
+  fun parsePortableJsonObject(root: JSONObject): LocalVaultSnapshot {
+    return deserializeSnapshot(root)
+  }
+
+  fun replaceFullSnapshotFromBackup(restored: LocalVaultSnapshot) {
+    val now = System.currentTimeMillis()
+    val safeGoals = restored.goals.ifEmpty { listOf(SavingsGoal()) }
+    val resolvedActiveGoalId = if (safeGoals.any { it.id == restored.activeGoalId }) {
+      restored.activeGoalId
+    } else {
+      safeGoals.first().id
+    }
+    mutate { cur ->
+      restored.copy(
+        household = restored.household.copy(
+          userId = vaultKey,
+          onboardingCompleted = true
+        ),
+        goals = safeGoals,
+        activeGoalId = resolvedActiveGoalId,
+        quickChips = restored.quickChips.ifEmpty { QuickChip.defaultChips() },
+        starterSeeded = true,
+        hasCustomCalibration = true,
+        migratedToCloudUids = cur.migratedToCloudUids,
+        lastLocalHouseholdEditMs = now,
+        lastLocalGoalEditMs = now,
+        lastLocalTxEditMs = now,
+        lastLocalChipsEditMs = now,
+        lastLocalChitthisEditMs = now,
+        lastLocalCommitmentsEditMs = now
+      )
+    }
+  }
+
   private fun mutate(block: (LocalVaultSnapshot) -> LocalVaultSnapshot) {
     synchronized(this) {
       val computed = block(_snapshot.value)
@@ -546,6 +586,7 @@ class LocalHouseholdVault(
             vaultFile.writeText(json, Charsets.UTF_8)
             tmp.delete()
           }
+          GharQuickStampWidgetUpdater.enqueueUpdate(appContext)
         }
       }
     }
@@ -586,7 +627,7 @@ class LocalHouseholdVault(
     put("instrumentType", g.instrumentType.name)
   }
 
-  private fun serializeSnapshot(s: LocalVaultSnapshot): JSONObject {
+  private fun serializeSnapshot(s: LocalVaultSnapshot, maxTransactions: Int = 300): JSONObject {
     val root = JSONObject()
     root.put("gullakHonestV2", true)
     root.put("starterSeeded", s.starterSeeded)
@@ -618,7 +659,7 @@ class LocalHouseholdVault(
     root.put("goals", goalsArr)
 
     val txArr = JSONArray()
-    s.transactions.take(300).forEach { tx ->
+    s.transactions.take(maxTransactions).forEach { tx ->
       txArr.put(
         JSONObject().apply {
           put("id", tx.id)

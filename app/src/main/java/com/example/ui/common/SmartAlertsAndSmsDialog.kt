@@ -90,7 +90,7 @@ import kotlinx.coroutines.launch
 
 private enum class SmartAlertsTab(val label: String) {
   ROUTINES_AND_NUDGES("Routines & Nudges"),
-  SMS_READER("SMS Reader")
+  SMS_READER("Bank Alert Import")
 }
 
 @Composable
@@ -856,39 +856,26 @@ private fun SmsReaderTabContent(
   val skyAccent = PastelSky.readableAccentOn(MaterialTheme.colorScheme.surface)
   val sageAccent = PastelSage.readableAccentOn(MaterialTheme.colorScheme.surface)
 
-  fun executeInboxScan() {
+  fun executeClipboardScan() {
     isScanning = true
     scope.launch {
-      val res = SmsInboxScanner.scanRecentInbox(context, existingTransactions)
+      val summary = SmsInboxScanner.scanClipboardAlerts(context, existingTransactions)
       isScanning = false
-      res.onSuccess { summary ->
-        scannedCount = summary.scannedMessagesCount
-        candidates = summary.candidates
-        if (summary.latestAvailableBalancePaise != null) {
-          container.preferencesRepository.setLastDetectedBankBalancePaise(summary.latestAvailableBalancePaise)
-        }
-        onStatusMessage(
-          if (summary.candidates.isEmpty()) {
-            "Scanned ${summary.scannedMessagesCount} SMS messages (last 45 days). No new unlogged bank/UPI alerts found."
-          } else {
-            "Found ${summary.candidates.size} new bank/UPI transactions from ${summary.scannedMessagesCount} SMS messages."
-          }
-        )
-      }.onFailure {
-        onStatusMessage("Could not read SMS inbox. You can also paste any bank SMS below.")
+      scannedCount = summary.scannedMessagesCount
+      candidates = summary.candidates
+      if (summary.latestAvailableBalancePaise != null) {
+        container.preferencesRepository.setLastDetectedBankBalancePaise(summary.latestAvailableBalancePaise)
       }
-    }
-  }
-
-  val smsPermLauncher = rememberLauncherForActivityResult(
-    ActivityResultContracts.RequestMultiplePermissions()
-  ) { result ->
-    val readGranted = result[Manifest.permission.READ_SMS] == true ||
-      ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
-    if (readGranted) {
-      executeInboxScan()
-    } else {
-      onStatusMessage("SMS permission not granted. Use the Paste Bank SMS parser below without permissions.")
+      onStatusMessage(
+        when {
+          summary.scannedMessagesCount == 0 ->
+            "Clipboard is empty. Copy any bank/UPI SMS (or use Share -> Ghar in your Messages app) and tap again."
+          summary.candidates.isEmpty() ->
+            "Checked clipboard text — no new unlogged bank/UPI debit or credit found (OTPs are ignored)."
+          else ->
+            "Found ${summary.candidates.size} bank/UPI alert(s) in your clipboard ready to import."
+        }
+      )
     }
   }
 
@@ -922,7 +909,7 @@ private fun SmsReaderTabContent(
               Spacer(modifier = Modifier.width(10.dp))
               Column {
                 Text(
-                  text = "Last SMS Bank Balance",
+                  text = "Last Bank Balance",
                   style = MaterialTheme.typography.labelMedium,
                   fontWeight = FontWeight.Bold,
                   color = MaterialTheme.colorScheme.onSurface
@@ -962,7 +949,7 @@ private fun SmsReaderTabContent(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Scan Bank & UPI SMS Inbox",
+              text = "Zero-Permission Clipboard & Share Import",
               style = MaterialTheme.typography.titleSmall,
               fontWeight = FontWeight.Bold,
               color = MaterialTheme.colorScheme.onSurface
@@ -970,7 +957,7 @@ private fun SmsReaderTabContent(
           }
           Spacer(modifier = Modifier.height(4.dp))
           Text(
-            text = "Reads bank/UPI debit & credit alerts from the last 45 days locally on your phone. OTPs and personal chats are ignored.",
+            text = "Ghar never asks Android for raw SMS/OTP inbox permissions. Copy one or more bank/UPI messages and tap Scan Clipboard, or use Share -> Ghar straight from your Messages app.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
           )
@@ -981,19 +968,7 @@ private fun SmsReaderTabContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
           ) {
             Button(
-              onClick = {
-                val hasRead = ContextCompat.checkSelfPermission(
-                  context,
-                  Manifest.permission.READ_SMS
-                ) == PackageManager.PERMISSION_GRANTED
-                if (hasRead) {
-                  executeInboxScan()
-                } else {
-                  smsPermLauncher.launch(
-                    arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
-                  )
-                }
-              },
+              onClick = { executeClipboardScan() },
               enabled = !isScanning,
               shape = CircleShape,
               colors = ButtonDefaults.buttonColors(
@@ -1014,7 +989,7 @@ private fun SmsReaderTabContent(
                 Spacer(modifier = Modifier.width(8.dp))
               }
               Text(
-                text = if (isScanning) "Scanning..." else "Scan Recent Bank SMS",
+                text = if (isScanning) "Scanning..." else "Scan Copied Bank Alert",
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -1028,8 +1003,8 @@ private fun SmsReaderTabContent(
                   val batch = candidates.map { it.transaction }
                   container.transactionRepository.insertAll(batch)
                   candidates = emptyList()
-                  onStatusMessage("Imported ${batch.size} SMS transactions.")
-                  undoController?.recordAction("Imported ${batch.size} SMS transactions") {
+                  onStatusMessage("Imported ${batch.size} bank/UPI transaction(s).")
+                  undoController?.recordAction("Imported ${batch.size} bank alerts") {
                     batch.forEach { container.transactionRepository.delete(it.id) }
                   }
                 },
@@ -1042,10 +1017,10 @@ private fun SmsReaderTabContent(
               }
             }
           }
-          if (scannedCount != null && candidates.isEmpty()) {
+          if (scannedCount != null && scannedCount!! > 0 && candidates.isEmpty()) {
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-              text = "Checked $scannedCount messages • Everything is up to date.",
+              text = "Checked $scannedCount alert block(s) • Everything is up to date.",
               style = MaterialTheme.typography.labelSmall,
               color = sageAccent
             )
@@ -1186,26 +1161,55 @@ private fun SmsReaderTabContent(
 
           Button(
             onClick = {
-              val parsed = SmsInboxScanner.parseManualSmsText(pastedSms)
-              if (parsed == null) {
-                onStatusMessage("No valid debit/credit transaction detected in that message (OTPs are ignored).")
+              val batchSummary = SmsInboxScanner.parseBatchAlertText(
+                rawBatch = pastedSms,
+                existingTransactions = existingTransactions
+              )
+              if (batchSummary.candidates.isEmpty()) {
+                val singleFallback = SmsInboxScanner.parseManualSmsText(pastedSms)
+                if (singleFallback == null) {
+                  onStatusMessage("No valid debit/credit transaction detected in that message (OTPs are ignored).")
+                } else {
+                  val tx = singleFallback.transaction
+                  container.transactionRepository.insert(tx)
+                  if (singleFallback.availableBalancePaise != null) {
+                    scope.launch {
+                      container.preferencesRepository.setLastDetectedBankBalancePaise(singleFallback.availableBalancePaise)
+                    }
+                  }
+                  pastedSms = ""
+                  onStatusMessage(
+                    "Logged ${if (tx.isExpense) "Expense" else "Income"}: ${tx.merchant} (${CurrencyFormatter.formatRupees(tx.amountRupees)})"
+                  )
+                  undoController?.recordAction("Logged SMS: ${tx.merchant}") {
+                    container.transactionRepository.delete(tx.id)
+                  }
+                }
               } else {
-                val tx = parsed.transaction
-                container.transactionRepository.insert(tx)
-                if (parsed.availableBalancePaise != null) {
+                val batch = batchSummary.candidates.map { it.transaction }
+                container.transactionRepository.insertAll(batch)
+                if (batchSummary.latestAvailableBalancePaise != null) {
                   scope.launch {
-                    container.preferencesRepository.setLastDetectedBankBalancePaise(parsed.availableBalancePaise)
+                    container.preferencesRepository.setLastDetectedBankBalancePaise(batchSummary.latestAvailableBalancePaise)
                   }
                 }
                 pastedSms = ""
-                val balSuffix = parsed.availableBalancePaise?.let {
+                val balSuffix = batchSummary.latestAvailableBalancePaise?.let {
                   " • Bank Bal: ${CurrencyFormatter.formatRupees(it / 100L)}"
                 }.orEmpty()
-                onStatusMessage(
-                  "Logged ${if (tx.isExpense) "Expense" else "Income"}: ${tx.merchant} (${CurrencyFormatter.formatRupees(tx.amountRupees)})$balSuffix"
-                )
-                undoController?.recordAction("Logged SMS: ${tx.merchant}") {
-                  container.transactionRepository.delete(tx.id)
+                if (batch.size == 1) {
+                  val tx = batch.first()
+                  onStatusMessage(
+                    "Logged ${if (tx.isExpense) "Expense" else "Income"}: ${tx.merchant} (${CurrencyFormatter.formatRupees(tx.amountRupees)})$balSuffix"
+                  )
+                  undoController?.recordAction("Logged SMS: ${tx.merchant}") {
+                    container.transactionRepository.delete(tx.id)
+                  }
+                } else {
+                  onStatusMessage("Logged ${batch.size} bank/UPI transactions$balSuffix")
+                  undoController?.recordAction("Logged ${batch.size} bank alerts") {
+                    batch.forEach { container.transactionRepository.delete(it.id) }
+                  }
                 }
               }
             },

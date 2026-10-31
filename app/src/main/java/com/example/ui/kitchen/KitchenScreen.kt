@@ -409,6 +409,14 @@ fun KitchenScreen(
     }
   }
 
+  val pendingWidgetKharcha by CaptureEventBus.pendingQuickKharchaRequest.collectAsStateWithLifecycle()
+  LaunchedEffect(pendingWidgetKharcha) {
+    if (pendingWidgetKharcha && CaptureEventBus.consumeQuickKharchaRequest()) {
+      prefilledQuickAddRupees = null
+      showQuickAddDialog = true
+    }
+  }
+
   LaunchedEffect(Unit) {
     CaptureEventBus.newTransactionEvent.collect { newTx ->
       cashAnimation = CashAnimRequest(

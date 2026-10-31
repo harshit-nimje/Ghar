@@ -76,14 +76,17 @@ Ghar is organized around five tactile spaces connected by a floating hallway doc
 - **Gullak (Bhai's Room — Savings):** Build a parallel habit of paying yourself first. Drop coins into an earthen *Gullak* with tactile coin-drop animations and track milestone progress toward concrete goals (e.g., *Himachal Trip*, emergency cushion, or festival shopping).
 - **Courtyard (Living Room — Insights):** Step back to view monthly spending velocity, category-wise breakdowns (*Chai & Snacks, Groceries, Food Delivery, Commute, Bills*), and recurring household patterns without clutter.
 - **Study (Papa's Desk — Plan & Growth):** Manage monthly income/budget envelopes, track **Pakke Commitments** (rent, EMIs, subscriptions, utility bills), and consult **Papa** for structured, practical perspective on bigger purchases and long-term discipline.
-- **Balcony (Evening Terrace — Preferences):** Switch seamlessly between **Hinglish** and **Plain English**, configure on-device **UPI/Bank SMS Auto-Capture**, manage daily reminders, export a clean **Household Summary**, or link your Google account for encrypted cloud backup.
+- **Balcony (Evening Terrace — Preferences):** Switch seamlessly between **Hinglish** and **Plain English**, configure on-device **UPI/Bank SMS Auto-Capture**, toggle **Biometric / PIN App Lock**, pin the **2×2 Home Screen Quick Stamp Widget**, back up or restore offline `.json` vaults & `.csv` spreadsheets, or link your Google account for cloud sync.
 
 ---
 
 ## Core Features
 
 - **Physical Money Metaphors:** Tactile cash and coin animations, dynamic *Batua* wallet states, and integer-paise precision (`amountPaise: Long`) across every calculation—zero floating-point rounding drift.
-- **On-Device UPI & Bank SMS Auto-Capture:** Optional `SmsCaptureReceiver` and `SmsInboxScanner` parse Indian bank/UPI debit & credit alerts locally on your phone with automatic merchant extraction and duplicate suppression. Raw SMS content never leaves your device.
+- **2×2 Home Screen Quick Stamp Widget (Jetpack Glance):** Live **Today's Safe-to-Spend** balance right on your launcher with 1-tap **Quick Stamps** (logs straight to your ledger without opening the app) and a **`+ Quick Kharcha`** shortcut into Rasoi.
+- **Local JSON Backup/Restore & CSV Spreadsheet Export:** Zero-permission Android Storage Access Framework `.json` vault backups let Guest Mode users move their full Khata, Gullak pots, stamps, and settings across phones offline, alongside UTF-8 `.csv` exports for Excel and Google Sheets.
+- **Optional Biometric & PIN App Lock:** Protect household income and Gullak balances with **Fingerprint, Face Unlock, or Device PIN** (`BiometricPrompt`) plus automatic `FLAG_SECURE` shielding in Android Recent Apps.
+- **Zero-Permission UPI & Bank Alert Import:** Share any bank/UPI alert straight from Google/Samsung Messages (`Share -> Ghar`) or scan copied alerts from your clipboard in 1 tap—with **zero `READ_SMS` / `RECEIVE_SMS` permissions**, keeping banking OTPs completely isolated and avoiding Android Enhanced Fraud Protection sideload blocks.
 - **Maa & Papa Conversational Guidance (Hybrid Cloud + Offline AI):**
   - Context-aware household conversations powered by **Firebase AI Logic** with domain routing (`FamilyDomainRouter`).
   - Resilient offline & low-connectivity fallback via lazy on-device engines (`MaaMiniInferenceEngine` & `PapaOfflineAdvisor`) so guidance never blocks or fails when offline.
@@ -102,7 +105,7 @@ Ghar follows an **offline-first MVVM + Repository** architecture with explicit c
 
 ```text
 app/src/main/java/com/example/
-├── capture/          # On-device Bank/UPI SMS receiver, inbox scanner, parser & deduplicator
+├── capture/          # Zero-permission Share-to-Ghar & clipboard bank/UPI alert parser & deduplicator
 ├── core/
 │   ├── ai/           # FamilyDomainRouter, MaaMiniModelManager, MaaMiniInferenceEngine, PapaOfflineAdvisor
 │   ├── audio/        # Tactile sound effects & subtle feedback cues
@@ -111,6 +114,7 @@ app/src/main/java/com/example/
 │   ├── model/        # Immutable domain models (Transaction, SavingsGoal, Chitthi, Commitment)
 │   └── perf/         # Deferred idle resource prewarming
 ├── data/
+│   ├── backup/       # Portable .json full-vault backup/restore & RFC-4180 .csv exporter
 │   ├── local/        # LocalHouseholdVault (instant hot StateFlows + durable local snapshots)
 │   ├── preferences/  # Jetpack DataStore user preferences
 │   └── repository/   # Unified *Store interfaces with Local* and CloudSynced* implementations
@@ -119,15 +123,18 @@ app/src/main/java/com/example/
     ├── bhairoom/     # Gullak savings screen & ViewModel
     ├── livingroom/   # Courtyard analytics screen & ViewModel
     ├── study/        # Papa's Study budget & commitments screen & ViewModel
-    ├── balcony/      # Settings, SMS permissions, export & account management
+    ├── balcony/      # Settings, JSON/CSV vault backup, Biometric lock & account management
+    ├── security/     # BiometricPrompt + Device PIN App Lock gate & Recent Apps shielding
+    ├── widget/       # 2x2 Jetpack Glance Quick Stamp & Safe-to-Spend AppWidget
     └── common/       # Shared illustrations, Batua/Gullak graphics, Hisaab calculator, undo host
 ```
 
 | Layer | Technologies |
 | :--- | :--- |
 | **Language & Async** | Kotlin `2.2`, Kotlin Coroutines & `StateFlow` |
-| **UI Framework** | Jetpack Compose (Material 3), Edge-to-Edge `WindowInsets`, `HorizontalPager` |
-| **Local Persistence** | `LocalHouseholdVault` + Jetpack `DataStore` Preferences |
+| **UI & Home Widget** | Jetpack Compose (Material 3), Jetpack Glance `1.1` (`AppWidget`), Edge-to-Edge `WindowInsets` |
+| **Privacy & Security** | AndroidX Biometric `1.1` (`BiometricPrompt` + Device Credential), `FLAG_SECURE`, Zero-Trust Firestore Rules |
+| **Local Persistence** | `LocalHouseholdVault` + Jetpack `DataStore` Preferences + SAF `.json` / `.csv` Portability |
 | **Cloud & Auth** | Firebase Firestore, Firebase Auth, Jetpack Credential Manager (`GoogleId`), Firebase App Check |
 | **AI Layer** | Firebase AI Logic + On-device offline fallback engines |
 | **Build & Optimization** | AGP `9.1`, Compile/Target SDK `36`, Min SDK `24`, Compose Stability Config, R8 Shrinking |

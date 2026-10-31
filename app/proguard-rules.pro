@@ -21,3 +21,10 @@
 # Preserve Jetpack Credential Manager & Google Identity Services entry points
 -keep class androidx.credentials.** { *; }
 -keep class com.google.android.libraries.identity.googleid.** { *; }
+
+# Preserve Jetpack Glance ActionCallback public zero-arg constructors for reflection instantiation
+-keep class * implements androidx.glance.appwidget.action.ActionCallback {
+    public <init>();
+}
+-keep class com.example.ui.widget.** { *; }
+

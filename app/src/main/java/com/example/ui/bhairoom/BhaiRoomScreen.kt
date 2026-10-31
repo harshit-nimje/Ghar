@@ -334,7 +334,9 @@ fun BhaiRoomScreen(
   ) {
     LazyColumn(
       state = listState,
-      modifier = Modifier.fillMaxSize(),
+      modifier = Modifier
+        .fillMaxSize()
+        .testTag("bhai_room_lazy_list"),
       contentPadding = PaddingValues(bottom = 32.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -1603,22 +1605,24 @@ private fun SteppingStoneGoalTrail(goal: SavingsGoal) {
           .height(14.dp)
       ) {
         val gap = 6.dp.toPx()
-        val stoneWidth = (size.width - gap * (totalStones - 1)) / totalStones
-        for (i in 0 until totalStones) {
-          val isFilled = i < activeStones
-          val color = when {
-            !isFilled -> PastelSage.copy(alpha = 0.18f)
-            i == activeStones - 1 -> GoldCoin
-            else -> PastelSage
+        val stoneWidth = ((size.width - gap * (totalStones - 1)) / totalStones).coerceAtLeast(0f)
+        if (stoneWidth > 0f && size.height > 0f) {
+          for (i in 0 until totalStones) {
+            val isFilled = i < activeStones
+            val color = when {
+              !isFilled -> PastelSage.copy(alpha = 0.18f)
+              i == activeStones - 1 -> GoldCoin
+              else -> PastelSage
+            }
+            val h = if (i % 2 == 0) size.height else size.height * 0.80f
+            val yOffset = (size.height - h) / 2f
+            drawRoundRect(
+              color = color,
+              topLeft = Offset(i * (stoneWidth + gap), yOffset),
+              size = Size(stoneWidth, h),
+              cornerRadius = CornerRadius(h / 2f, h / 2f)
+            )
           }
-          val h = if (i % 2 == 0) size.height else size.height * 0.80f
-          val yOffset = (size.height - h) / 2f
-          drawRoundRect(
-            color = color,
-            topLeft = Offset(i * (stoneWidth + gap), yOffset),
-            size = Size(stoneWidth, h),
-            cornerRadius = CornerRadius(h / 2f, h / 2f)
-          )
         }
       }
     }
@@ -2354,10 +2358,20 @@ internal fun computeAdaptiveGullakCoins(
 
   val ladder = longArrayOf(10L, 20L, 50L, 100L, 200L, 250L, 500L, 1_000L, 2_000L, 2_500L, 5_000L, 10_000L, 25_000L)
 
-  val target1 = (effectiveDaily * 0.22).toLong().coerceIn(10L, maxAffordableCoin / 4L)
-  val target2 = (effectiveDaily * 0.55).toLong().coerceIn(target1 * 2L, maxAffordableCoin / 2L)
-  val target3 = (effectiveDaily * 1.30 + goalDailyPace * 0.35).toLong().coerceIn(target2 + 10L, maxAffordableCoin)
-  val target4 = (effectiveDaily * 3.50 + goalDailyPace * 1.20).toLong().coerceIn(target3 + 20L, maxAffordableCoin)
+  val cap1 = maxOf(10L, maxAffordableCoin / 4L)
+  val target1 = (effectiveDaily * 0.22).toLong().coerceIn(10L, cap1)
+
+  val min2 = target1 * 2L
+  val cap2 = maxOf(min2, maxAffordableCoin / 2L)
+  val target2 = (effectiveDaily * 0.55).toLong().coerceIn(min2, cap2)
+
+  val min3 = target2 + 10L
+  val cap3 = maxOf(min3, (maxAffordableCoin * 3L) / 4L)
+  val target3 = (effectiveDaily * 1.30 + goalDailyPace * 0.35).toLong().coerceIn(min3, cap3)
+
+  val min4 = target3 + 20L
+  val cap4 = maxOf(min4, maxAffordableCoin)
+  val target4 = (effectiveDaily * 3.50 + goalDailyPace * 1.20).toLong().coerceIn(min4, cap4)
 
   fun snapNearestLadder(target: Long, floor: Long): Long {
     var best = ladder.first()

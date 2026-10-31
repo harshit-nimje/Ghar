@@ -25,20 +25,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.AppContainer
+import com.example.capture.CaptureEventBus
 import com.example.capture.SmsInboxScanner
 import com.example.core.localization.LocalPlainEnglishMode
+import com.example.core.util.CurrencyFormatter
 import com.example.ui.balcony.BalconyScreen
 import com.example.ui.bhairoom.BhaiRoomScreen
 import com.example.ui.common.GharUndoSnackbarHost
@@ -136,8 +131,13 @@ fun HouseScreen(
     }
   }
 
-  val context = LocalContext.current
-  val lifecycleOwner = LocalLifecycleOwner.current
+  val pendingWidgetKharcha by CaptureEventBus.pendingQuickKharchaRequest.collectAsStateWithLifecycle()
+  LaunchedEffect(pendingWidgetKharcha) {
+    if (pendingWidgetKharcha && currentRoom != HouseRoom.KITCHEN) {
+      jumpToRoomFromTop(HouseRoom.KITCHEN)
+    }
+  }
+
   val housePrefsSliceFlow = remember(container) {
     container.preferencesRepository.prefsSnapshot
       .map { snap -> Triple(snap.isLoaded, snap.plainEnglishMode, snap.seenRoomSplashes) }
@@ -149,38 +149,35 @@ fun HouseScreen(
     }
   )
   val (prefsLoaded, plainEnglishMode, seenRoomSplashes) = housePrefsSlice
-  var lastSmsRefreshAtMs by remember { mutableLongStateOf(0L) }
 
-  // Zero-constant-RAM foreground catch-up: when returning to Ghar with READ_SMS granted,
-  // refresh the latest reported bank balance on IO (throttled to at most once every 60s).
-  DisposableEffect(lifecycleOwner, container.userId) {
-    val observer = LifecycleEventObserver { _, event ->
-      if (event == Lifecycle.Event.ON_RESUME) {
-        val now = System.currentTimeMillis()
-        val hasReadSms = ContextCompat.checkSelfPermission(
-          context,
-          Manifest.permission.READ_SMS
-        ) == PackageManager.PERMISSION_GRANTED
-        if (hasReadSms && now - lastSmsRefreshAtMs >= 60_000L) {
-          lastSmsRefreshAtMs = now
-          container.appScope.launch {
-            val summary = SmsInboxScanner.scanRecentInbox(
-              context = context,
-              existingTransactions = container.transactionRepository.transactionsState.value,
-              lookbackDays = 2,
-              maxMessages = 30
-            ).getOrNull()
-            summary?.latestAvailableBalancePaise?.let { latestBal ->
-              if (latestBal != container.preferencesRepository.prefsSnapshot.value.lastDetectedBankBalancePaise) {
-                container.preferencesRepository.setLastDetectedBankBalancePaise(latestBal)
-              }
-            }
-          }
-        }
-      }
+  val pendingSharedAlert by CaptureEventBus.pendingSharedAlertText.collectAsStateWithLifecycle()
+  LaunchedEffect(pendingSharedAlert, container.userId) {
+    val rawShared = pendingSharedAlert ?: return@LaunchedEffect
+    val consumed = CaptureEventBus.consumeSharedAlertText() ?: return@LaunchedEffect
+    val summary = SmsInboxScanner.parseBatchAlertText(
+      rawBatch = consumed,
+      existingTransactions = container.transactionRepository.transactionsState.value,
+      senderLabel = "Shared Alert"
+    )
+    if (summary.latestAvailableBalancePaise != null) {
+      container.preferencesRepository.setLastDetectedBankBalancePaise(summary.latestAvailableBalancePaise)
     }
-    lifecycleOwner.lifecycle.addObserver(observer)
-    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    if (summary.candidates.isNotEmpty()) {
+      val batch = summary.candidates.map { it.transaction }
+      container.transactionRepository.insertAll(batch)
+      batch.lastOrNull()?.let { CaptureEventBus.notifyNewTransaction(it) }
+      val msg = if (batch.size == 1) {
+        val single = batch.first()
+        "Logged shared alert: ${single.merchant} (${CurrencyFormatter.formatRupees(single.amountRupees)})"
+      } else {
+        "Logged ${batch.size} shared bank/UPI alerts"
+      }
+      undoController.recordAction(msg) {
+        batch.forEach { container.transactionRepository.delete(it.id) }
+      }
+    } else {
+      undoController.recordAction("No new bank/UPI debit or credit found in shared text") {}
+    }
   }
 
   var manualGuideRoom by remember { mutableStateOf<HouseRoom?>(null) }

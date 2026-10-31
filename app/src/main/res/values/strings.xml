@@ -37,5 +37,20 @@
     <string name="confirm_dialog_cancel">Cancel</string>
     <string name="room_guide_step_in">Step Inside</string>
     <string name="undo_action_label">Undo</string>
+
+    <!-- v1.1 Vault Backup/Restore, Biometric App Lock & Home Screen Quick Stamp Widget -->
+    <string name="vault_backup_card_title">Local Backup, Restore &amp; CSV Export</string>
+    <string name="vault_backup_card_subtitle">Move your full Khata &amp; Gullak between phones offline (.json) or open in Excel / Sheets (.csv)</string>
+    <string name="vault_backup_json_action">Backup (.json)</string>
+    <string name="vault_restore_json_action">Restore (.json)</string>
+    <string name="vault_export_csv_action">Export Spreadsheet (.csv)</string>
+    <string name="biometric_lock_title">Biometric &amp; PIN App Lock</string>
+    <string name="biometric_lock_subtitle">Require fingerprint, face, or device PIN on launch and hide balances in Recent Apps</string>
+    <string name="ghar_locked_title">Ghar is Locked</string>
+    <string name="ghar_locked_subtitle">Verify your fingerprint or screen lock to step inside your household ledger.</string>
+    <string name="ghar_unlock_action">Unlock Ghar</string>
+    <string name="widget_quick_stamp_title">Ghar Quick Stamp</string>
+    <string name="widget_quick_stamp_desc">Today\'s Safe-to-Spend balance with 1-tap Quick Stamps &amp; Kharcha entry right on your home screen.</string>
+    <string name="widget_pin_action">Add 2×2 Quick Stamp Widget to Home Screen</string>
 </resources>
 

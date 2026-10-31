@@ -9,6 +9,7 @@ import com.example.core.model.Direction
 import com.example.core.model.SavingsGoal
 import com.example.core.model.Transaction
 import com.example.data.local.LocalHouseholdVault
+import com.example.data.local.LocalVaultSnapshot
 import com.example.data.preferences.PreferencesRepository
 import com.example.data.repository.BudgetRepository
 import com.example.data.repository.BudgetStore
@@ -51,6 +52,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 /**
  * Application-level container holding shared singletons, a persistent Guest container,
@@ -88,6 +90,9 @@ interface AppContainer {
   val isInitialSyncReady: StateFlow<Boolean>
   val isOnboardingCompletedLocally: Boolean
   fun seedDefaultDataOnce()
+  fun exportVaultJsonObject(): JSONObject
+  fun parseVaultJsonObject(root: JSONObject): LocalVaultSnapshot
+  suspend fun restoreVaultSnapshot(restored: LocalVaultSnapshot)
 }
 
 class DefaultRootAppContainer(context: Context) : RootAppContainer {
@@ -179,6 +184,16 @@ class GuestAppContainer(
       appScope = appScope
     )
   }
+
+  override fun exportVaultJsonObject(): JSONObject = guestVault.exportPortableJsonObject()
+
+  override fun parseVaultJsonObject(root: JSONObject): LocalVaultSnapshot =
+    guestVault.parsePortableJsonObject(root)
+
+  override suspend fun restoreVaultSnapshot(restored: LocalVaultSnapshot) {
+    guestVault.replaceFullSnapshotFromBackup(restored)
+    preferencesRepository.markQuickChipsSeeded(userId)
+  }
 }
 
 class UserScopedAppContainer(
@@ -252,6 +267,34 @@ class UserScopedAppContainer(
       userId = userId,
       appScope = appScope
     )
+  }
+
+  override fun exportVaultJsonObject(): JSONObject = userVault.exportPortableJsonObject()
+
+  override fun parseVaultJsonObject(root: JSONObject): LocalVaultSnapshot =
+    userVault.parsePortableJsonObject(root)
+
+  override suspend fun restoreVaultSnapshot(restored: LocalVaultSnapshot) {
+    userVault.replaceFullSnapshotFromBackup(restored)
+    preferencesRepository.markQuickChipsSeeded(userId)
+    appScope.launch {
+      runCatching {
+        val hh = restored.household
+        remoteBudget.saveHouseholdCalibration(
+          userName = hh.userName.ifBlank { defaultFirstName },
+          onboardingCompleted = true,
+          profile = hh.profile,
+          habitLeaks = hh.habitLeaks.toSet()
+        )
+        restored.goals.forEach { goal -> remoteGoal.saveGoal(goal) }
+        restored.quickChips.forEach { chip -> remoteQuickChip.upsert(chip) }
+        if (restored.transactions.isNotEmpty()) {
+          remoteTx.insertAll(restored.transactions)
+        }
+        restored.chitthis.forEach { note -> remoteChitthi.upsert(note) }
+        restored.commitments.forEach { commitment -> remoteCommitment.upsert(commitment) }
+      }
+    }
   }
 }
 

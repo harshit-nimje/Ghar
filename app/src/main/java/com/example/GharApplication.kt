@@ -13,8 +13,8 @@ class GharApplication : Application() {
 
   override fun onCreate() {
     super.onCreate()
-    // Keep Application.onCreate lightweight so headless BroadcastReceiver wakeups
-    // (SmsCaptureReceiver, HouseholdReminderReceiver) never decode UI bitmaps or fonts into RAM.
+    // Keep Application.onCreate lightweight so headless receiver/widget wakeups
+    // (HouseholdReminderReceiver, GharQuickStampWidgetReceiver) never decode UI bitmaps or fonts into RAM.
     rootContainer = DefaultRootAppContainer(this)
 
     rootContainer.appScope.launch {

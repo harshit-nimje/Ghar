@@ -156,6 +156,12 @@ jobs:
           OUT_NAME="Ghar-${TAG_LABEL}-${VARIANT}.apk"
           OUT_PATH="dist/${OUT_NAME}"
           cp "${RAW_APK}" "${OUT_PATH}"
+
+          APKSIGNER_BIN=$(find "${ANDROID_HOME}/build-tools" -name "apksigner" 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "${APKSIGNER_BIN}" ] && [ -x "${APKSIGNER_BIN}" ]; then
+            "${APKSIGNER_BIN}" verify --verbose "${OUT_PATH}"
+          fi
+
           sha256sum "${OUT_PATH}" > "${OUT_PATH}.sha256"
 
           APK_SIZE_MB=$(du -h "${OUT_PATH}" | cut -f1)
@@ -172,6 +178,7 @@ jobs:
             echo "- **Variant:** \`${VARIANT}\`"
             echo "- **File:** \`${OUT_NAME}\` (${APK_SIZE_MB})"
             echo "- **SHA-256:** \`${APK_SHA256}\`"
+            echo "- **Install Tip:** If your phone previously had a Debug or earlier differently-signed build of Ghar installed, uninstall the old copy once before installing this APK (use Balcony -> Backup Vault JSON first if you want to keep Guest data)."
             if [ "${SIGNING_MODE:-}" = "ephemeral_fallback" ]; then
               echo ""
               echo "> **Note (Ephemeral Signing Key Used):** \`RELEASE_KEYSTORE_BASE64\`, \`STORE_PASSWORD\`, and \`KEY_PASSWORD\` were not configured in GitHub Secrets, so a temporary \`upload\` key was generated so your APK is immediately installable."

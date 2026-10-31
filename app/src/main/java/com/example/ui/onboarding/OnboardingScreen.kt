@@ -943,19 +943,11 @@ private fun StepPermissionsOptional(
   var notifGranted by remember {
     mutableStateOf(HouseholdNotificationHelper.hasNotificationPermission(context))
   }
-  var smsGranted by remember {
-    mutableStateOf(
-      ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
-    )
-  }
 
   DisposableEffect(lifecycleOwner) {
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_RESUME) {
         notifGranted = HouseholdNotificationHelper.hasNotificationPermission(context)
-        smsGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
-          ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
       }
     }
     lifecycleOwner.lifecycle.addObserver(observer)
@@ -976,13 +968,6 @@ private fun StepPermissionsOptional(
     }
   }
 
-  val smsPermLauncher = rememberLauncherForActivityResult(
-    ActivityResultContracts.RequestMultiplePermissions()
-  ) { result ->
-    smsGranted = (result[Manifest.permission.READ_SMS] == true ||
-      ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED)
-  }
-
   Surface(
     shape = CircleShape,
     color = PastelSage.copy(alpha = 0.16f),
@@ -1000,7 +985,7 @@ private fun StepPermissionsOptional(
       )
       Spacer(modifier = Modifier.width(6.dp))
       Text(
-        text = "100% OPTIONAL • PROCESSED ON YOUR PHONE",
+        text = "100% OPTIONAL • ZERO OTP / SMS INBOX ACCESS",
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
         color = PastelSage.readableAccentOn(MaterialTheme.colorScheme.background),
@@ -1012,13 +997,13 @@ private fun StepPermissionsOptional(
   Spacer(modifier = Modifier.height(10.dp))
 
   Text(
-    text = "Helpful Permissions",
+    text = "Privacy-First Setup",
     style = MaterialTheme.typography.headlineMedium,
     color = MaterialTheme.colorScheme.onBackground,
     fontWeight = FontWeight.Bold
   )
   Text(
-    text = "Enable only what helps your routine. Every permission below is completely optional — Ghar works offline even with none enabled.",
+    text = "Ghar never asks for raw SMS inbox access, so your banking OTPs stay completely private. Enable optional reminder notifications below if helpful.",
     style = MaterialTheme.typography.bodyMedium,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
     modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
@@ -1046,20 +1031,16 @@ private fun StepPermissionsOptional(
   OnboardingPermissionCard(
     icon = Icons.Default.Sms,
     accentColor = PastelSky,
-    title = "Bank & UPI SMS Capture",
+    title = "Share-to-Ghar & Clipboard Bank Import",
     purpose = if (plainEnglish) {
-      "Automatically detects bank or UPI SMS alerts to log spends and update your latest bank balance on-device. Personal chats and OTPs are ignored."
+      "Ready automatically with zero SMS permissions! Share any bank/UPI alert to Ghar from your Messages app or paste copied alerts in 1 tap."
     } else {
-      "Automatically detects bank or UPI SMS alerts to update your Batua and latest bank balance on-device. Personal chats and OTPs are ignored."
+      "Ready automatically with zero SMS permissions! Share any bank/UPI alert to Ghar from your Messages app or scan copied alerts into your Batua in 1 tap."
     },
-    isGranted = smsGranted,
-    actionLabel = "Allow Bank SMS",
+    isGranted = true,
+    actionLabel = "Ready",
     testTag = "onboarding_perm_sms_button",
-    onEnableClick = {
-      smsPermLauncher.launch(
-        arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
-      )
-    }
+    onEnableClick = {}
   )
 
   Spacer(modifier = Modifier.height(14.dp))
